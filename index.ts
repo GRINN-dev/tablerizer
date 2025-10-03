@@ -303,7 +303,7 @@ async function main() {
             mdParts.push(
               `- **${p.policy}** (${p.cmd}, ${
                 p.permissive
-              }); roles: \`${p.roles.join(", ")}\`` +
+              }); roles: \`${p.roles?.join?.(", ")}\`` +
                 (p.using ? `\n  - USING: \`${p.using}\`` : "") +
                 (p.with_check ? `\n  - WITH CHECK: \`${p.with_check}\`` : "")
             );
