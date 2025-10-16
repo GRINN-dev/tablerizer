@@ -3,8 +3,8 @@ name: 🎲 Publish Tablerizer
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.2.3
-  workflow_dispatch:  # Allow manual trigger
+      - "v*.*.*" # Trigger on version tags like v1.2.3
+  workflow_dispatch: # Allow manual trigger
 
 jobs:
   test:
@@ -17,8 +17,8 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: "18"
+          cache: "npm"
 
       - name: 📋 Install dependencies
         run: npm ci
@@ -59,9 +59,9 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
+          node-version: "18"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
 
       - name: 📋 Install dependencies
         run: npm ci
@@ -86,24 +86,24 @@ jobs:
           release_name: 🎲 Tablerizer ${{ github.ref_name }}
           body: |
             ## 🎲 Tablerizer ${{ github.ref_name }}
-            
+
             ### 📦 Installation
             ```bash
             npm install -g tablerizer@${{ github.ref_name }}
             ```
-            
+
             ### 🔗 Links
             - **npm**: https://www.npmjs.com/package/tablerizer
             - **Documentation**: https://github.com/GRINN-dev/tablerizer#readme
-            
+
             ### 📋 Changes
             See commit history for detailed changes in this release.
-            
+
             ### 🎯 Usage
             ```bash
             # CLI usage
             tablerizer --schemas "app_public" --scope all
-            
+
             # With environment variables
             export DATABASE_URL="postgres://..."
             tablerizer --config .tablerizerrc
@@ -121,8 +121,8 @@ jobs:
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: "18"
+          cache: "npm"
 
       - name: 📋 Install dependencies
         run: npm ci

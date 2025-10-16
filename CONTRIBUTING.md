@@ -5,12 +5,14 @@ Thank you for considering contributing to Tablerizer! This document provides gui
 ## 📋 Development Setup
 
 1. **Fork & Clone**
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/tablerizer.git
    cd tablerizer
    ```
 
 2. **Install Dependencies**
+
    ```bash
    npm install
    ```
@@ -25,31 +27,37 @@ Thank you for considering contributing to Tablerizer! This document provides gui
 ## 🔄 Release Process
 
 ### Semantic Versioning
+
 We follow [Semantic Versioning](https://semver.org/):
+
 - **PATCH** (1.0.1): Bug fixes
 - **MINOR** (1.1.0): New features (backward compatible)
 - **MAJOR** (2.0.0): Breaking changes
 
 ### Release Commands
+
 ```bash
 # Patch release (bug fixes)
 npm run release:patch
 
 # Minor release (new features)
-npm run release:minor  
+npm run release:minor
 
 # Major release (breaking changes)
 npm run release:major
 ```
 
 ### Manual Release Process
+
 1. **Update Version & CLI**
+
    ```bash
    # Update package.json version
    # Update VERSION constant in src/cli.ts
    ```
 
 2. **Commit & Tag**
+
    ```bash
    git add .
    git commit -m "feat: description of changes"
@@ -66,6 +74,7 @@ npm run release:major
 ## 🎯 Conventional Commits
 
 Use conventional commit format:
+
 ```bash
 feat: add new feature
 fix: bug fix
@@ -79,6 +88,7 @@ chore: updating build tasks, package manager configs, etc
 ## 🧪 Testing
 
 ### Manual Testing
+
 ```bash
 # Test version
 node bin/tablerizer.js --version
@@ -94,6 +104,7 @@ DATABASE_URL="postgres://..." node bin/tablerizer.js --schemas "public"
 ```
 
 ### Environment Variable Testing
+
 ```bash
 # Create test config
 echo '{"database_url": "$TEST_DB", "schemas": ["$TEST_SCHEMA"]}' > .test-config
@@ -135,11 +146,13 @@ TEST_DB="postgres://test" TEST_SCHEMA="public" node bin/tablerizer.js --config .
 ## 🚀 Publishing
 
 ### Automated (Recommended)
+
 - Push tags trigger automatic npm publishing via GitHub Actions
 - Releases are created automatically on GitHub
 - Security audits run on every push
 
 ### Manual (Backup)
+
 ```bash
 npm run prepublishOnly
 npm pack --dry-run
@@ -149,11 +162,14 @@ npm publish
 ## 🔧 Environment Setup
 
 ### Required Secrets (for maintainers)
+
 Set these in GitHub repository secrets:
+
 - `NPM_TOKEN`: npm authentication token
 - `GITHUB_TOKEN`: automatically provided by GitHub
 
 ### Local Development
+
 ```bash
 # Environment variables for testing
 export DATABASE_URL="postgres://user:pass@localhost:5432/test"
@@ -164,6 +180,7 @@ export OUTPUT_DIR="./test-output"
 ## 🐛 Bug Reports
 
 When reporting bugs, include:
+
 - Tablerizer version: `tablerizer --version`
 - Node.js version: `node --version`
 - Operating system

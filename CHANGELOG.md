@@ -10,9 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2025-10-16
 
 ### Added
+
 - 🎯 **Environment Variable Interpolation** in config files
   - Support for `$VAR` simple variable expansion
-  - Support for `${VAR}` braced variable expansion  
+  - Support for `${VAR}` braced variable expansion
   - Support for `${VAR:default}` variables with default values
   - Support for `${VAR:}` variables with empty defaults
 - 🔐 **Enhanced Security** by allowing sensitive data to stay in environment variables
@@ -20,15 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 🧪 **Test Coverage** for environment variable expansion functionality
 
 ### Changed
+
 - 📋 **Config Loading** now processes environment variables before validation
 - 📖 **README** updated with environment variable syntax and examples
 
 ### Security
+
 - 🔒 Database credentials and sensitive data can now be kept in environment variables instead of config files
 
 ## [1.0.0] - 2025-10-16
 
 ### Added
+
 - 🎲 **Initial Release** of Tablerizer - PostgreSQL Table Export Wizard
 - 🏗️ **Complete Database Schema Export** - Tables, privileges, policies, triggers, constraints
 - 🔐 **RBAC & RLS Support** - Full table and column-level permissions with RLS policies
@@ -43,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 📊 **Flexible Scope** - Export tables, functions, or both with scope configuration
 
 ### Features
+
 - **CLI Usage**: Global and local installation support
 - **Library Usage**: Programmatic API for Node.js applications
 - **Configuration**: Auto-detection of `.tablerizerrc` files
