@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-10-16
+
+### Added
+
+- 📅 **Configurable Date Display** in generated file headers
+  - Add `include_date` option to Config, TablerizerOptions, and CliArgs interfaces
+  - Add `--include-date` and `--no-date` CLI flags
+  - Default behavior: exclude date from headers (backward compatible)
+  - Support for JSON config file: `"include_date": true/false`
+
+### Fixed
+
+- 🔧 **Partitioned Table Handling** - properly handle PostgreSQL partitioned tables
+  - Include partitioned tables (`relkind = 'p'`) in exports
+  - Exclude individual partitions that inherit from partitioned parents
+  - Prevents duplicate exports of parent table + individual partitions
+  - Maintains logical table structure with parent-level RBAC/RLS management
+  - Updated all table querying methods to support both ordinary and partitioned tables
+
 ## [1.1.0] - 2025-10-16
 
 ### Added
