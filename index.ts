@@ -554,10 +554,18 @@ function generateTableSQL(
 
     // Add table comments if they exist
     if (table.comments) {
-      const tableComments = table.comments.filter(c => c.comment_type === 'TABLE');
+      const tableComments = table.comments.filter(
+        (c) => c.comment_type === "TABLE"
+      );
       if (tableComments.length > 0) {
         for (const comment of tableComments) {
-          lines.push(`COMMENT ON TABLE ${schema}.${table.table} IS ${comment.comment ? `'${comment.comment.replace(/'/g, "''")}'` : 'NULL'};`);
+          lines.push(
+            `COMMENT ON TABLE ${schema}.${table.table} IS ${
+              comment.comment
+                ? `'${comment.comment.replace(/'/g, "''")}'`
+                : "NULL"
+            };`
+          );
         }
         lines.push("");
       }
@@ -593,11 +601,18 @@ function generateTableSQL(
 
       // Add column comments if they exist
       if (table.comments) {
-        const columnComments = table.comments.filter(c => 
-          c.comment_type === 'COLUMN' && c.column_name === col.column_name
+        const columnComments = table.comments.filter(
+          (c) =>
+            c.comment_type === "COLUMN" && c.column_name === col.column_name
         );
         for (const comment of columnComments) {
-          lines.push(`COMMENT ON COLUMN ${schema}.${table.table}.${col.column_name} IS ${comment.comment ? `'${comment.comment.replace(/'/g, "''")}'` : 'NULL'};`);
+          lines.push(
+            `COMMENT ON COLUMN ${schema}.${table.table}.${col.column_name} IS ${
+              comment.comment
+                ? `'${comment.comment.replace(/'/g, "''")}'`
+                : "NULL"
+            };`
+          );
         }
       }
     }
@@ -606,8 +621,8 @@ function generateTableSQL(
     if (table.foreign_keys && table.foreign_keys.length > 0) {
       lines.push("");
       lines.push("-- Foreign Key Constraints:");
-      const fkGroups = new Map<string, Array<typeof table.foreign_keys[0]>>();
-      
+      const fkGroups = new Map<string, Array<(typeof table.foreign_keys)[0]>>();
+
       // Group foreign keys by constraint name
       for (const fk of table.foreign_keys) {
         if (!fkGroups.has(fk.constraint_name)) {
@@ -617,12 +632,17 @@ function generateTableSQL(
       }
 
       for (const [constraintName, fks] of fkGroups.entries()) {
-        const sourceColumns = fks.map(fk => fk.column_name).join(', ');
-        const targetColumns = fks.map(fk => fk.foreign_column_name).join(', ');
+        const sourceColumns = fks.map((fk) => fk.column_name).join(", ");
+        const targetColumns = fks
+          .map((fk) => fk.foreign_column_name)
+          .join(", ");
         const targetTable = `${fks[0].foreign_table_schema}.${fks[0].foreign_table_name}`;
-        
+
         let fkDef = `-- ${constraintName}: (${sourceColumns}) -> ${targetTable}(${targetColumns})`;
-        if (fks[0].update_rule !== 'NO ACTION' || fks[0].delete_rule !== 'NO ACTION') {
+        if (
+          fks[0].update_rule !== "NO ACTION" ||
+          fks[0].delete_rule !== "NO ACTION"
+        ) {
           fkDef += ` [UPDATE: ${fks[0].update_rule}, DELETE: ${fks[0].delete_rule}]`;
         }
         lines.push(fkDef);
@@ -633,9 +653,12 @@ function generateTableSQL(
     if (table.constraints && table.constraints.length > 0) {
       lines.push("");
       lines.push("-- Constraints:");
-      
-      const constraintGroups = new Map<string, Array<typeof table.constraints[0]>>();
-      
+
+      const constraintGroups = new Map<
+        string,
+        Array<(typeof table.constraints)[0]>
+      >();
+
       // Group constraints by name and type
       for (const constraint of table.constraints) {
         const key = `${constraint.constraint_name}:${constraint.constraint_type}`;
@@ -646,17 +669,25 @@ function generateTableSQL(
       }
 
       for (const [key, constraints] of constraintGroups.entries()) {
-        const [constraintName, constraintType] = key.split(':');
+        const [constraintName, constraintType] = key.split(":");
         const constraint = constraints[0];
-        
-        if (constraintType === 'PRIMARY KEY') {
-          const columns = constraints.filter(c => c.column_name).map(c => c.column_name).join(', ');
+
+        if (constraintType === "PRIMARY KEY") {
+          const columns = constraints
+            .filter((c) => c.column_name)
+            .map((c) => c.column_name)
+            .join(", ");
           lines.push(`-- ${constraintName}: PRIMARY KEY (${columns})`);
-        } else if (constraintType === 'UNIQUE') {
-          const columns = constraints.filter(c => c.column_name).map(c => c.column_name).join(', ');
+        } else if (constraintType === "UNIQUE") {
+          const columns = constraints
+            .filter((c) => c.column_name)
+            .map((c) => c.column_name)
+            .join(", ");
           lines.push(`-- ${constraintName}: UNIQUE (${columns})`);
-        } else if (constraintType === 'CHECK') {
-          lines.push(`-- ${constraintName}: CHECK ${constraint.check_clause || ''}`);
+        } else if (constraintType === "CHECK") {
+          lines.push(
+            `-- ${constraintName}: CHECK ${constraint.check_clause || ""}`
+          );
         }
       }
     }
@@ -1271,7 +1302,7 @@ async function main() {
               a.constraint_name.localeCompare(b.constraint_name)
             ),
             comments: (commentsByTable.get(key) ?? []).sort((a, b) =>
-              (a.column_name || '').localeCompare(b.column_name || '')
+              (a.column_name || "").localeCompare(b.column_name || "")
             ),
           };
         }),
