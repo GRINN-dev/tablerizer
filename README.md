@@ -140,6 +140,8 @@ Tablerizer automatically looks for configuration files in this order:
 
 ### Config File Format
 
+#### Basic Configuration
+
 ```json
 {
   "schemas": ["app_public", "app_private"],
@@ -153,6 +155,44 @@ Tablerizer automatically looks for configuration files in this order:
     "myapp_visitor": ":DATABASE_VISITOR"
   }
 }
+```
+
+#### With Environment Variables 🎯
+
+Tablerizer supports environment variable interpolation in config files using `$` syntax:
+
+```json
+{
+  "schemas": ["app_public", "app_private"],
+  "out": "${OUTPUT_DIR:./exports}",
+  "roles": ["$ADMIN_ROLE", "$USER_ROLE", "${VISITOR_ROLE:visitor}"],
+  "database_url": "$DATABASE_URL",
+  "scope": "${EXPORT_SCOPE:all}",
+  "role_mappings": {
+    "myapp_admin": "${ADMIN_PLACEHOLDER::DATABASE_ADMIN}",
+    "myapp_user": "${USER_PLACEHOLDER::DATABASE_USER}",
+    "myapp_visitor": "${VISITOR_PLACEHOLDER::DATABASE_VISITOR}"
+  }
+}
+```
+
+**Environment Variable Syntax:**
+
+- `$VAR` - Simple variable expansion
+- `${VAR}` - Braced variable expansion
+- `${VAR:default}` - Variable with default value
+- `${VAR:}` - Variable with empty default
+
+**Example .env file:**
+
+```bash
+DATABASE_URL="postgres://user:pass@host:5432/db"
+OUTPUT_DIR="./my-exports"
+ADMIN_ROLE="admin"
+USER_ROLE="user"
+EXPORT_SCOPE="all"
+ADMIN_PLACEHOLDER=":DATABASE_ADMIN"
+USER_PLACEHOLDER=":DATABASE_USER"
 ```
 
 ### Environment Variables

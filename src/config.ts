@@ -51,13 +51,62 @@ export function findConfigFile(): string | null {
 }
 
 /**
- * Load and parse configuration file
+ * Expand environment variables in a string value
+ * Supports: $VAR, ${VAR}, ${VAR:default}
+ */
+function expandEnvVars(value: string): string {
+  return value.replace(
+    /\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g,
+    (match, braced, simple) => {
+      const varName = braced || simple;
+
+      // Handle default value syntax: ${VAR:default}
+      if (braced && braced.includes(":")) {
+        const [envVar, defaultValue] = braced.split(":", 2);
+        return process.env[envVar] || defaultValue;
+      }
+
+      // Simple variable expansion
+      return process.env[varName] || match;
+    }
+  );
+}
+
+/**
+ * Recursively expand environment variables in config object
+ */
+function expandConfigEnvVars(obj: any): any {
+  if (typeof obj === "string") {
+    return expandEnvVars(obj);
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(expandConfigEnvVars);
+  }
+
+  if (obj && typeof obj === "object") {
+    const expanded: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      expanded[key] = expandConfigEnvVars(value);
+    }
+    return expanded;
+  }
+
+  return obj;
+}
+
+/**
+ * Load and parse configuration file with environment variable expansion
  */
 export function loadConfig(configPath: string): Config {
   try {
     const configContent = fs.readFileSync(configPath, "utf8");
     const config = JSON.parse(configContent);
-    return config;
+
+    // Expand environment variables in the config
+    const expandedConfig = expandConfigEnvVars(config);
+
+    return expandedConfig;
   } catch (error) {
     throw new Error(`Failed to load config file ${configPath}: ${error}`);
   }

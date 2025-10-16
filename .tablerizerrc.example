@@ -2,11 +2,11 @@
   "schemas": ["app_public", "app_private"],
   "out": "./exports",
   "roles": ["admin", "user", "visitor"],
-  "database_url": "postgres://user:password@localhost:5432/database",
+  "database_url": "$DATABASE_URL",
   "scope": "all",
   "role_mappings": {
     "myapp_admin": ":DATABASE_ADMIN",
-    "myapp_user": ":DATABASE_USER",
+    "myapp_user": ":DATABASE_USER", 
     "myapp_visitor": ":DATABASE_VISITOR",
     "myapp_authenticator": ":DATABASE_AUTHENTICATOR"
   }
