@@ -1,0 +1,17 @@
+{
+  "schemas": ["app_public", "app_private"],
+  "out": "./exports",
+  "roles": [
+    "graphile_starter_admin",
+    "graphile_starter_auth",
+    "graphile_starter_anon",
+    "graphile_starter_authenticator"
+  ],
+  "database_url": "postgres://user:password@localhost:5432/database",
+  "role_mappings": {
+    "graphile_starter_admin": ":DATABASE_ADMIN",
+    "graphile_starter_auth": ":DATABASE_AUTH",
+    "graphile_starter_anon": ":DATABASE_VISITOR",
+    "graphile_starter_authenticator": ":DATABASE_AUTHENTICATOR"
+  }
+}

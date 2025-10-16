@@ -1,7 +1,31 @@
 {
-  "name": "peppsy-migration-scripts",
+  "name": "pgrbac",
+  "version": "1.0.0",
+  "description": "PostgreSQL RBAC/RLS Export Tool - Generate SQL files to recreate table privileges, RLS policies, triggers, and constraints",
+  "main": "index.ts",
   "module": "index.ts",
   "type": "module",
+  "bin": {
+    "pgrbac": "./index.ts"
+  },
+  "scripts": {
+    "start": "bun index.ts",
+    "help": "bun index.ts --help",
+    "version": "bun index.ts --version"
+  },
+  "keywords": [
+    "postgresql",
+    "rbac",
+    "rls",
+    "row-level-security",
+    "database",
+    "privileges",
+    "sql",
+    "migration",
+    "graphile"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",
     "@types/pg": "^8.15.5"

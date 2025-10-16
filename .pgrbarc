@@ -1,0 +1,11 @@
+{
+  "schemas": ["app_public"],
+  "out": "./pgrbac-output",
+  "roles": ["graphile_starter_admin"],
+  "role_mappings": {
+    "graphile_starter_admin": ":DATABASE_ADMIN",
+    "graphile_starter_auth": ":DATABASE_AUTH",
+    "graphile_starter_anon": ":DATABASE_VISITOR",
+    "graphile_starter_authenticator": ":DATABASE_AUTHENTICATOR"
+  }
+}

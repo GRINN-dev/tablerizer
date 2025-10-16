@@ -1,38 +1,189 @@
 #!/usr/bin/env ts-node
 
 /**
- * Generate SQL files to recreate RBAC (table privileges) and RLS (policies) for all tables in schemas.
+ * 🛡️ pgrbac - PostgreSQL RBAC/RLS Export Tool
+ *
+ * Generate SQL files to recreate RBAC (table privileges), RLS (policies), triggers,
+ * and constraints for all tables in schemas with comprehensive documentation.
  *
  * Usage:
- *   ts-node index.ts --schemas "schema1,schema2" --out ./sql_output
- *   ts-node index.ts --schema public --role my_role
- *   ts-node index.ts --schemas "public,priv" --roles "role1,role2,role3"
- *   DATABASE_URL=postgres://user:pass@host:5432/db ts-node index.ts --schemas "my_schema"
+ *   pgrbac --schemas "schema1,schema2" --out ./sql_output
+ *   pgrbac --config ./config.json
+ *   pgrbac (uses .pgrbarc if present)
+ *   DATABASE_URL=postgres://user:pass@host:5432/db pgrbac --schemas "my_schema"
  *
  * Options:
+ *   --config   Path to configuration file (JSON)
  *   --schema   Target schema name (legacy, use --schemas instead)
  *   --schemas  Target schema names, comma-separated (recommended)
  *   --out      Output directory (default: ./tables/)
  *   --role     Filter grants by specific role (optional)
  *   --roles    Filter grants by multiple roles, comma-separated (optional)
+ *   --help     Show help information
+ *   --version  Show version information
+ *
+ * Config file format (.pgrbarc or custom JSON):
+ *   {
+ *     "schemas": ["schema1", "schema2"],
+ *     "out": "./output",
+ *     "roles": ["role1", "role2"],
+ *     "database_url": "postgres://user:pass@host:5432/db",
+ *     "role_mappings": {
+ *       "actual_role_name": ":PLACEHOLDER_NAME"
+ *     }
+ *   }
+ *
+ * Environment variables:
+ *   DATABASE_URL - PostgreSQL connection string
+ *   SCHEMAS - Comma-separated schema names
+ *   OUTPUT_DIR - Output directory
+ *   ROLES - Comma-separated role names
  */
 
 import fs from "fs";
 import path from "path";
 import { Client } from "pg";
 
+const TOOL_NAME = "pgrbac";
+const VERSION = "1.0.0";
+
+type Config = {
+  schemas?: string[];
+  out?: string;
+  roles?: string[];
+  database_url?: string;
+  role_mappings?: Record<string, string>;
+};
+
 type Args = {
   schemas: string[];
   out?: string;
   roles?: string[];
+  database_url?: string;
+  role_mappings?: Record<string, string>;
+  help?: boolean;
+  version?: boolean;
 };
+
+function showHelp() {
+  console.log(`
+🛡️  ${TOOL_NAME} v${VERSION} - PostgreSQL RBAC/RLS Export Tool
+
+Generate SQL files to recreate table privileges, RLS policies, triggers, and constraints
+with comprehensive documentation and support for role mappings.
+
+USAGE:
+  ${TOOL_NAME} [options]
+  ${TOOL_NAME} --schemas "app_public,app_private" --out ./exports
+  ${TOOL_NAME} --config ./my-config.json
+  ${TOOL_NAME} (automatically uses .pgrbarc if present)
+
+OPTIONS:
+  --schemas <list>     Schema names (comma-separated)
+  --out <directory>    Output directory (default: ./tables/)
+  --roles <list>       Filter by roles (comma-separated)
+  --config <file>      Configuration file path
+  --help               Show this help
+  --version            Show version
+
+CONFIGURATION:
+  Automatic config detection: .pgrbarc, .pgrbarc.json
+  Config file format: JSON with schemas, out, roles, role_mappings
+  
+ENVIRONMENT VARIABLES:
+  DATABASE_URL         PostgreSQL connection string
+  SCHEMAS             Schema names (comma-separated)
+  OUTPUT_DIR          Output directory
+  ROLES               Role names (comma-separated)
+
+EXAMPLES:
+  ${TOOL_NAME} --schemas "public" --roles "admin,user"
+  ${TOOL_NAME} --config ./prod-config.json
+  DATABASE_URL="postgres://..." ${TOOL_NAME} --schemas "app_public"
+
+For more information: https://github.com/your-repo/pgrbac
+`);
+}
+
+function showVersion() {
+  console.log(`${TOOL_NAME} v${VERSION}`);
+}
+
+function findConfigFile(): string | null {
+  const possibleConfigs = [".pgrbarc", ".pgrbarc.json"];
+
+  for (const configName of possibleConfigs) {
+    const configPath = path.resolve(process.cwd(), configName);
+    if (fs.existsSync(configPath)) {
+      return configPath;
+    }
+  }
+
+  return null;
+}
+
+function loadConfig(configPath: string): Config {
+  try {
+    const configContent = fs.readFileSync(configPath, "utf8");
+    const config = JSON.parse(configContent);
+    console.log(
+      `📁 Loaded config from: ${path.relative(process.cwd(), configPath)}`
+    );
+    return config;
+  } catch (error) {
+    console.error(`❌ Error loading config file ${configPath}:`, error);
+    process.exit(1);
+  }
+}
 
 function parseArgs(): Args {
   const args = process.argv.slice(2);
-  const out: Args = { schemas: [] };
+  let config: Config = {};
+
+  // Check for help or version first
+  if (args.includes("--help") || args.includes("-h")) {
+    showHelp();
+    process.exit(0);
+  }
+
+  if (args.includes("--version") || args.includes("-v")) {
+    showVersion();
+    process.exit(0);
+  }
+
+  // Check for explicit config file
+  const configIndex = args.indexOf("--config");
+  let configPath: string | null = null;
+
+  if (configIndex !== -1 && args[configIndex + 1]) {
+    configPath = args[configIndex + 1];
+  } else {
+    // Look for automatic config files
+    configPath = findConfigFile();
+  }
+
+  if (configPath) {
+    config = loadConfig(configPath);
+  }
+
+  // Start with config values, then override with CLI args and env vars
+  const out: Args = {
+    schemas: config.schemas || [],
+    out: config.out,
+    roles: config.roles,
+    database_url: config.database_url,
+    role_mappings: config.role_mappings || {},
+  };
+
+  // Parse CLI arguments (these override config file)
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     const next = args[i + 1];
+    if (a === "--config") {
+      // Already handled above
+      i++;
+      continue;
+    }
     if (a === "--schema") {
       // Legacy support for single schema
       out.schemas = [next];
@@ -55,11 +206,74 @@ function parseArgs(): Args {
       continue;
     }
   }
+
+  // Apply environment variables (these override config but are overridden by CLI)
+  if (process.env.SCHEMAS && out.schemas.length === 0) {
+    out.schemas = process.env.SCHEMAS.split(",").map((s) => s.trim());
+    console.log(`🌍 Using schemas from environment: ${out.schemas.join(", ")}`);
+  }
+  if (process.env.OUTPUT_DIR && !out.out) {
+    out.out = process.env.OUTPUT_DIR;
+    console.log(`🌍 Using output directory from environment: ${out.out}`);
+  }
+  if (process.env.ROLES && !out.roles) {
+    out.roles = process.env.ROLES.split(",").map((r) => r.trim());
+    console.log(`🌍 Using roles from environment: ${out.roles.join(", ")}`);
+  }
+  if (process.env.DATABASE_URL && !out.database_url) {
+    out.database_url = process.env.DATABASE_URL;
+  }
+
   if (out.schemas.length === 0) {
-    console.error("ERROR: --schema or --schemas is required");
+    console.error(`
+❌ No schemas specified!
+
+Please specify schemas using one of:
+  • CLI: --schemas "schema1,schema2"  
+  • Config: Create .pgrbarc with "schemas": ["schema1"]
+  • Environment: SCHEMAS="schema1,schema2"
+
+Run --help for more information.
+`);
     process.exit(1);
   }
+
   return out;
+}
+
+/**
+ * Map role names using the role_mappings configuration
+ */
+function mapRoleName(
+  roleName: string,
+  roleMappings: Record<string, string>
+): string {
+  return roleMappings[roleName] || roleName;
+}
+
+/**
+ * Apply role mappings to SQL content
+ */
+function applyRoleMappings(
+  sqlContent: string,
+  roleMappings: Record<string, string>
+): string {
+  let mappedContent = sqlContent;
+  for (const [actualRole, placeholder] of Object.entries(roleMappings)) {
+    // Replace role names in various SQL contexts
+    const patterns = [
+      new RegExp(`\\b${actualRole}\\b`, "g"), // General role name
+      new RegExp(`TO ${actualRole}(;|\\s)`, "g"), // GRANT ... TO role
+      new RegExp(`FROM ${actualRole}(;|\\s)`, "g"), // REVOKE ... FROM role
+    ];
+
+    for (const pattern of patterns) {
+      mappedContent = mappedContent.replace(pattern, (match) =>
+        match.replace(actualRole, placeholder)
+      );
+    }
+  }
+  return mappedContent;
 }
 
 /**
@@ -697,25 +911,61 @@ function generateTableSQL(
 }
 
 async function main() {
-  const { schemas, out, roles } = parseArgs();
+  const { schemas, out, roles, database_url, role_mappings } = parseArgs();
 
-  const dbUrl = process.env.DATABASE_URL;
+  console.log(
+    `\n🛡️  ${TOOL_NAME} v${VERSION} - PostgreSQL RBAC/RLS Export Tool\n`
+  );
+
+  const dbUrl = database_url || process.env.DATABASE_URL;
   if (!dbUrl) {
-    console.error(
-      "ERROR: set DATABASE_URL (e.g., postgres://user:pass@host:5432/db)"
-    );
+    console.error(`
+❌ Database connection required!
+
+Please provide DATABASE_URL using one of:
+  • Environment: DATABASE_URL="postgres://..."
+  • Config file: "database_url": "postgres://..."
+  
+Run --help for more information.
+`);
     process.exit(1);
   }
 
+  console.log(`🔌 Connecting to database...`);
   const client = new Client({ connectionString: dbUrl });
-  await client.connect();
+
+  try {
+    await client.connect();
+    console.log(`✅ Connected successfully\n`);
+  } catch (error) {
+    console.error(`❌ Failed to connect to database:`, error);
+    process.exit(1);
+  }
 
   try {
     const baseOutputDir = out || "./tables";
     let totalFiles = 0;
 
+    console.log(`📁 Output directory: ${path.resolve(baseOutputDir)}`);
+    console.log(`🎯 Target schemas: ${schemas.join(", ")}`);
+
+    if (roles && roles.length > 0) {
+      console.log(`🔐 Filtering for roles: ${roles.join(", ")}`);
+    } else {
+      console.log(`🔐 Including all roles`);
+    }
+
+    if (role_mappings && Object.keys(role_mappings).length > 0) {
+      console.log(`🔄 Role mappings configured:`);
+      for (const [from, to] of Object.entries(role_mappings)) {
+        console.log(`   ${from} → ${to}`);
+      }
+    }
+
+    console.log(`\n🚀 Starting export...\n`);
+
     for (const schema of schemas) {
-      console.log(`\nProcessing schema: ${schema}`);
+      console.log(`📋 Processing schema: ${schema}`);
 
       // Create schema-specific output directory
       const schemaOutputDir = path.join(baseOutputDir, schema);
@@ -1319,7 +1569,13 @@ async function main() {
       // Generate one SQL file per table in schema-specific directory
       let schemaFilesCreated = 0;
       for (const table of data.tables) {
-        const sqlContent = generateTableSQL(schema, table, roles);
+        let sqlContent = generateTableSQL(schema, table, roles);
+
+        // Apply role mappings if configured
+        if (role_mappings && Object.keys(role_mappings).length > 0) {
+          sqlContent = applyRoleMappings(sqlContent, role_mappings);
+        }
+
         const filename = `${table.table}.sql`;
         const filepath = path.join(schemaOutputDir, filename);
 
@@ -1358,20 +1614,42 @@ async function main() {
       }
 
       console.log(
-        `  Created ${schemaFilesCreated} SQL files in: ${schemaOutputDir}`
+        `   ✅ Created ${schemaFilesCreated} files in: ${path.relative(
+          process.cwd(),
+          schemaOutputDir
+        )}`
       );
       totalFiles += schemaFilesCreated;
     }
 
+    console.log(`\n🎉 Export completed successfully!`);
     console.log(
-      `\nTotal: ${totalFiles} SQL files created across ${schemas.length} schema(s) in: ${baseOutputDir}`
+      `📊 Total: ${totalFiles} SQL files created across ${schemas.length} schema(s)`
     );
+    console.log(`📁 Location: ${path.relative(process.cwd(), baseOutputDir)}`);
+
+    if (role_mappings && Object.keys(role_mappings).length > 0) {
+      console.log(
+        `🔄 Role mappings applied: ${
+          Object.keys(role_mappings).length
+        } mappings`
+      );
+    }
+
+    console.log(`\n💡 Next steps:`);
+    console.log(`   • Review the generated SQL files`);
+    console.log(`   • Test in a development environment`);
+    console.log(`   • Apply to your target database`);
+  } catch (error) {
+    console.error(`\n❌ Export failed:`, error);
+    throw error;
   } finally {
+    console.log(`\n🔌 Disconnecting from database...`);
     await client.end();
   }
 }
 
 main().catch((err) => {
-  console.error("Failed:", err);
+  console.error(`\n💥 Fatal error:`, err.message || err);
   process.exit(1);
 });
