@@ -350,6 +350,7 @@ export class Tablerizer {
 
   /**
    * Get list of tables in a schema
+   * Includes ordinary tables and partitioned tables, but excludes individual partitions
    */
   private async getTables(
     schema: string
@@ -363,8 +364,19 @@ export class Tablerizer {
       SELECT c.relname as table_name
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE c.relkind = 'r'  -- ordinary tables
+      WHERE (
+          c.relkind = 'r'  -- ordinary tables
+          OR c.relkind = 'p'  -- partitioned tables (parent tables)
+        )
         AND n.nspname = $1
+        -- Exclude partition tables (tables that inherit from a partitioned parent)
+        AND NOT EXISTS (
+          SELECT 1 
+          FROM pg_inherits i
+          JOIN pg_class parent ON parent.oid = i.inhparent
+          WHERE i.inhrelid = c.oid 
+            AND parent.relkind = 'p'  -- parent is a partitioned table
+        )
       ORDER BY c.relname
       `,
       [schema]
@@ -422,19 +434,20 @@ export class Tablerizer {
       throw new Error("Not connected to database");
     }
 
-    // Get basic table info
+    // Get basic table info (handles both ordinary and partitioned tables)
     const tableInfo = await this.connection.query<{
       oid: number;
       owner: string;
       relrowsecurity: boolean;
       relforcerowsecurity: boolean;
+      relkind: string;
     }>(
       `
-      SELECT c.oid, r.rolname as owner, c.relrowsecurity, c.relforcerowsecurity
+      SELECT c.oid, r.rolname as owner, c.relrowsecurity, c.relforcerowsecurity, c.relkind
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       JOIN pg_roles r ON r.oid = c.relowner
-      WHERE c.relkind = 'r' AND n.nspname = $1 AND c.relname = $2
+      WHERE (c.relkind = 'r' OR c.relkind = 'p') AND n.nspname = $1 AND c.relname = $2
       `,
       [schema, tableName]
     );
@@ -614,7 +627,7 @@ export class Tablerizer {
       SELECT obj_description(c.oid) as comment
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'r'
+      WHERE n.nspname = $1 AND c.relname = $2 AND (c.relkind = 'r' OR c.relkind = 'p')
       `,
       [schema, tableName]
     );
