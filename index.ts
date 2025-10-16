@@ -1,16 +1,19 @@
 #!/usr/bin/env ts-node
 
 /**
- * Dump RBAC (table privileges) and RLS (policies) for all tables in a schema.
+ * Generate SQL files to recreate RBAC (table privileges) and RLS (policies) for all tables in a schema.
  *
  * Usage:
- *   ts-node dump-rbac-rls.ts --schema public --out rbac_rls.json --format json
- *   DATABASE_URL=postgres://user:pass@host:5432/db ts-node dump-rbac-rls.ts --schema my_schema
+ *   ts-node index.ts --schema public --out ./sql_output
+ *   ts-node index.ts --schema public --role my_role
+ *   ts-node index.ts --schema public --roles "role1,role2,role3"
+ *   DATABASE_URL=postgres://user:pass@host:5432/db ts-node index.ts --schema my_schema
  *
  * Options:
  *   --schema   Target schema name (required)
- *   --out      Output file path (default: ./rbac_rls_<schema>.json or .md)
- *   --format   "json" (default) or "md"
+ *   --out      Output directory (default: ./<schema>_rbac_rls_sql/)
+ *   --role     Filter grants by specific role (optional)
+ *   --roles    Filter grants by multiple roles, comma-separated (optional)
  */
 
 import fs from "fs";
@@ -20,12 +23,12 @@ import { Client } from "pg";
 type Args = {
   schema: string;
   out?: string;
-  format?: "json" | "md";
+  roles?: string[];
 };
 
 function parseArgs(): Args {
   const args = process.argv.slice(2);
-  const out: Args = { schema: "", format: "json" };
+  const out: Args = { schema: "" };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     const next = args[i + 1];
@@ -39,8 +42,8 @@ function parseArgs(): Args {
       i++;
       continue;
     }
-    if (a === "--format") {
-      out.format = (next as Args["format"]) || "json";
+    if (a === "--role" || a === "--roles") {
+      out.roles = next.split(",").map((r) => r.trim());
       i++;
       continue;
     }
@@ -52,8 +55,460 @@ function parseArgs(): Args {
   return out;
 }
 
+/**
+ * Generate SQL statements to recreate table grants
+ */
+function generateGrantsSQL(
+  schema: string,
+  tableName: string,
+  grants: Array<{
+    grantor: string;
+    grantee: string;
+    privilege: string;
+    is_grantable: boolean;
+  }>
+): string[] {
+  const sqlStatements: string[] = [];
+
+  for (const grant of grants) {
+    // Escape identifiers if they contain special characters
+    const escapedGrantee =
+      grant.grantee.includes(" ") || grant.grantee.includes("-")
+        ? `"${grant.grantee}"`
+        : grant.grantee;
+
+    let sql = `GRANT ${grant.privilege} ON TABLE ${schema}.${tableName} TO ${escapedGrantee}`;
+    if (grant.is_grantable) {
+      sql += " WITH GRANT OPTION";
+    }
+    sql += ";";
+    sqlStatements.push(sql);
+  }
+
+  return sqlStatements;
+}
+
+/**
+ * Generate SQL statements to recreate column-level grants
+ */
+function generateColumnGrantsSQL(
+  schema: string,
+  tableName: string,
+  columnGrants: Array<{
+    column_name: string;
+    grantor: string;
+    grantee: string;
+    privilege: string;
+    is_grantable: boolean;
+  }>
+): string[] {
+  const sqlStatements: string[] = [];
+
+  // Group grants by grantee and privilege type
+  const grantsByGranteeAndPrivilege = new Map<string, Set<string>>();
+
+  for (const grant of columnGrants) {
+    const key = `${grant.grantee}:${grant.privilege}:${grant.is_grantable}`;
+    if (!grantsByGranteeAndPrivilege.has(key)) {
+      grantsByGranteeAndPrivilege.set(key, new Set());
+    }
+    grantsByGranteeAndPrivilege.get(key)!.add(grant.column_name);
+  }
+
+  // Generate GRANT statements
+  for (const [key, columns] of grantsByGranteeAndPrivilege) {
+    const [grantee, privilege, isGrantableStr] = key.split(":");
+    const isGrantable = isGrantableStr === "true";
+
+    // Escape identifiers if they contain special characters
+    const escapedGrantee =
+      grantee.includes(" ") || grantee.includes("-") ? `"${grantee}"` : grantee;
+
+    const escapedColumns = Array.from(columns).map((col) =>
+      col.includes(" ") || col.includes("-") ? `"${col}"` : col
+    );
+
+    let sql = `GRANT ${privilege} (${escapedColumns.join(
+      ", "
+    )}) ON TABLE ${schema}.${tableName} TO ${escapedGrantee}`;
+    if (isGrantable) {
+      sql += " WITH GRANT OPTION";
+    }
+    sql += ";";
+    sqlStatements.push(sql);
+  }
+
+  return sqlStatements;
+}
+
+/**
+ * Generate SQL statements to recreate triggers
+ */
+function generateTriggersSQL(
+  schema: string,
+  tableName: string,
+  triggers: Array<{
+    trigger_name: string;
+    action_timing: string;
+    event_manipulation: string;
+    action_orientation: string;
+    action_statement: string;
+    action_condition: string | null;
+    action_order: number;
+  }>
+): string[] {
+  const sqlStatements: string[] = [];
+
+  // Group triggers by name, timing, orientation, statement, and condition
+  const triggerGroups = new Map<
+    string,
+    {
+      trigger_name: string;
+      action_timing: string;
+      events: string[];
+      action_orientation: string;
+      action_statement: string;
+      action_condition: string | null;
+      action_order: number;
+    }
+  >();
+
+  for (const trigger of triggers) {
+    const groupKey = `${trigger.trigger_name}|${trigger.action_timing}|${
+      trigger.action_orientation
+    }|${trigger.action_statement}|${trigger.action_condition || ""}`;
+
+    if (triggerGroups.has(groupKey)) {
+      // Add this event to existing group
+      triggerGroups.get(groupKey)!.events.push(trigger.event_manipulation);
+    } else {
+      // Create new group
+      triggerGroups.set(groupKey, {
+        trigger_name: trigger.trigger_name,
+        action_timing: trigger.action_timing,
+        events: [trigger.event_manipulation],
+        action_orientation: trigger.action_orientation,
+        action_statement: trigger.action_statement,
+        action_condition: trigger.action_condition,
+        action_order: trigger.action_order,
+      });
+    }
+  }
+
+  // Generate SQL for each trigger group
+  for (const triggerGroup of triggerGroups.values()) {
+    // Escape trigger name if it contains special characters
+    const escapedTriggerName =
+      triggerGroup.trigger_name.includes(" ") ||
+      triggerGroup.trigger_name.includes("-")
+        ? `"${triggerGroup.trigger_name}"`
+        : triggerGroup.trigger_name;
+
+    // Sort events for consistent output (INSERT before UPDATE, etc.)
+    const sortedEvents = triggerGroup.events.sort();
+    const eventString = sortedEvents.join(" OR ");
+
+    let sql = `CREATE TRIGGER ${escapedTriggerName}`;
+    sql += ` ${triggerGroup.action_timing} ${eventString}`;
+    sql += ` ON ${schema}.${tableName}`;
+    sql += ` FOR EACH ${triggerGroup.action_orientation}`;
+
+    if (triggerGroup.action_condition) {
+      sql += ` WHEN (${triggerGroup.action_condition})`;
+    }
+
+    sql += ` ${triggerGroup.action_statement};`;
+    sqlStatements.push(sql);
+  }
+
+  return sqlStatements;
+}
+
+/**
+ * Generate SQL statements to recreate RLS policies
+ */
+function generatePoliciesSQL(
+  schema: string,
+  tableName: string,
+  rlsEnabled: boolean,
+  rlsForce: boolean,
+  policies: Array<{
+    policy: string;
+    cmd: string;
+    roles: string[] | null;
+    permissive: string;
+    using?: string | null;
+    with_check?: string | null;
+  }>
+): string[] {
+  const sqlStatements: string[] = [];
+
+  // Enable RLS if needed
+  if (rlsEnabled) {
+    sqlStatements.push(
+      `ALTER TABLE ${schema}.${tableName} ENABLE ROW LEVEL SECURITY;`
+    );
+  }
+
+  if (rlsForce) {
+    sqlStatements.push(
+      `ALTER TABLE ${schema}.${tableName} FORCE ROW LEVEL SECURITY;`
+    );
+  }
+
+  // Create policies
+  for (const policy of policies) {
+    // Escape policy name if it contains special characters
+    const escapedPolicyName =
+      policy.policy.includes(" ") || policy.policy.includes("-")
+        ? `"${policy.policy}"`
+        : policy.policy;
+
+    let sql = `CREATE POLICY ${escapedPolicyName} ON ${schema}.${tableName}`;
+
+    if (policy.permissive === "RESTRICTIVE") {
+      sql += " AS RESTRICTIVE";
+    }
+
+    sql += ` FOR ${policy.cmd}`;
+
+    if (
+      policy.roles &&
+      Array.isArray(policy.roles) &&
+      policy.roles.length > 0
+    ) {
+      // Escape role names if needed
+      const escapedRoles = policy.roles.map((role) =>
+        role.includes(" ") || role.includes("-") ? `"${role}"` : role
+      );
+      sql += ` TO ${escapedRoles.join(", ")}`;
+    }
+    // If no roles specified, the policy applies to PUBLIC (default behavior)
+
+    if (policy.using) {
+      sql += ` USING (${policy.using})`;
+    }
+
+    if (policy.with_check) {
+      sql += ` WITH CHECK (${policy.with_check})`;
+    }
+
+    sql += ";";
+    sqlStatements.push(sql);
+  }
+
+  return sqlStatements;
+}
+
+/**
+ * Generate a complete SQL file content for a table
+ */
+function generateTableSQL(
+  schema: string,
+  table: {
+    table: string;
+    owner: string;
+    rls: {
+      enabled: boolean;
+      force: boolean;
+      policies: Array<{
+        policy: string;
+        cmd: string;
+        roles: string[] | null;
+        permissive: string;
+        using?: string | null;
+        with_check?: string | null;
+      }>;
+    };
+    rbac: {
+      table_grants: Array<{
+        grantor: string;
+        grantee: string;
+        privilege: string;
+        is_grantable: boolean;
+      }>;
+      column_grants: Array<{
+        column_name: string;
+        grantor: string;
+        grantee: string;
+        privilege: string;
+        is_grantable: boolean;
+      }>;
+    };
+    triggers: Array<{
+      trigger_name: string;
+      action_timing: string;
+      event_manipulation: string;
+      action_orientation: string;
+      action_statement: string;
+      action_condition: string | null;
+      action_order: number;
+    }>;
+  },
+  roles?: string[]
+): string {
+  const lines: string[] = [];
+
+  lines.push(`-- RBAC & RLS recreation script for ${schema}.${table.table}`);
+  lines.push(`-- Generated at: ${new Date().toISOString()}`);
+  lines.push(`-- Table owner: ${table.owner}`);
+  if (roles && roles.length > 0) {
+    lines.push(`-- Filtered for roles: ${roles.join(", ")}`);
+  }
+  lines.push("");
+
+  // Add cleanup section for idempotency
+  lines.push("-- ============================================");
+  lines.push("-- CLEANUP: Make script idempotent");
+  lines.push("-- ============================================");
+  lines.push("");
+
+  // 1. Drop existing policies
+  lines.push("-- Drop existing policies");
+  lines.push("DO $$");
+  lines.push("DECLARE");
+  lines.push("    policy_name text;");
+  lines.push("BEGIN");
+  lines.push("    FOR policy_name IN");
+  lines.push(`        SELECT policyname`);
+  lines.push(`        FROM pg_policies`);
+  lines.push(
+    `        WHERE tablename = '${table.table}' AND schemaname = '${schema}'`
+  );
+  lines.push("    LOOP");
+  lines.push(
+    `        EXECUTE format('DROP POLICY %I ON ${schema}.${table.table};', policy_name);`
+  );
+  lines.push("    END LOOP;");
+  lines.push("END $$;");
+  lines.push("");
+
+  // 2. Drop existing triggers
+  lines.push("-- Drop existing triggers");
+  lines.push("DO $$");
+  lines.push("DECLARE");
+  lines.push("    trigger_name text;");
+  lines.push("BEGIN");
+  lines.push("    FOR trigger_name IN");
+  lines.push(`        SELECT tgname`);
+  lines.push(`        FROM pg_trigger t`);
+  lines.push(`        JOIN pg_class c ON c.oid = t.tgrelid`);
+  lines.push(`        JOIN pg_namespace n ON n.oid = c.relnamespace`);
+  lines.push(
+    `        WHERE c.relname = '${table.table}' AND n.nspname = '${schema}'`
+  );
+  lines.push(`        AND NOT t.tgisinternal`);
+  lines.push("    LOOP");
+  lines.push(
+    `        EXECUTE format('DROP TRIGGER %I ON ${schema}.${table.table};', trigger_name);`
+  );
+  lines.push("    END LOOP;");
+  lines.push("END $$;");
+  lines.push("");
+
+  // 3. Revoke existing grants
+  if (roles && roles.length > 0) {
+    // Only revoke from specified roles
+    for (const role of roles) {
+      const escapedRole =
+        role.includes(" ") || role.includes("-") ? `"${role}"` : role;
+      lines.push(`-- Revoke all privileges from ${role}`);
+      lines.push(
+        `REVOKE ALL ON TABLE ${schema}.${table.table} FROM ${escapedRole};`
+      );
+    }
+  } else {
+    // Get all grantees and revoke from them
+    const allGrantees = new Set<string>();
+    table.rbac.table_grants.forEach((g) => allGrantees.add(g.grantee));
+    table.rbac.column_grants.forEach((g) => allGrantees.add(g.grantee));
+
+    if (allGrantees.size > 0) {
+      lines.push("-- Revoke all privileges from existing grantees");
+      for (const grantee of allGrantees) {
+        const escapedGrantee =
+          grantee.includes(" ") || grantee.includes("-")
+            ? `"${grantee}"`
+            : grantee;
+        lines.push(
+          `REVOKE ALL ON TABLE ${schema}.${table.table} FROM ${escapedGrantee};`
+        );
+      }
+    }
+  }
+  lines.push("");
+
+  lines.push("-- ============================================");
+  lines.push("-- RECREATION: Apply new configuration");
+  lines.push("-- ============================================");
+  lines.push("");
+
+  // Generate RLS and policies SQL
+  const rlsSQL = generatePoliciesSQL(
+    schema,
+    table.table,
+    table.rls.enabled,
+    table.rls.force,
+    table.rls.policies
+  );
+
+  if (rlsSQL.length > 0) {
+    lines.push("-- Row Level Security and Policies");
+    lines.push(...rlsSQL);
+    lines.push("");
+  }
+
+  // Generate grants SQL
+  const grantsSQL = generateGrantsSQL(
+    schema,
+    table.table,
+    table.rbac.table_grants
+  );
+
+  if (grantsSQL.length > 0) {
+    lines.push("-- Table Grants");
+    lines.push(...grantsSQL);
+    lines.push("");
+  }
+
+  // Generate column grants SQL
+  const columnGrantsSQL = generateColumnGrantsSQL(
+    schema,
+    table.table,
+    table.rbac.column_grants
+  );
+
+  if (columnGrantsSQL.length > 0) {
+    lines.push("-- Column Grants");
+    lines.push(...columnGrantsSQL);
+    lines.push("");
+  }
+
+  // Generate triggers SQL
+  const triggersSQL = generateTriggersSQL(schema, table.table, table.triggers);
+
+  if (triggersSQL.length > 0) {
+    lines.push("-- Triggers");
+    lines.push(...triggersSQL);
+    lines.push("");
+  }
+
+  if (
+    rlsSQL.length === 0 &&
+    grantsSQL.length === 0 &&
+    columnGrantsSQL.length === 0 &&
+    triggersSQL.length === 0
+  ) {
+    lines.push(
+      "-- No RLS policies, table grants, column grants, or triggers found for this table"
+    );
+  }
+
+  return lines.join("\n");
+}
+
 async function main() {
-  const { schema, out, format } = parseArgs();
+  const { schema, out, roles } = parseArgs();
 
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
@@ -95,15 +550,7 @@ async function main() {
     );
 
     // 2) Table-level grants (RBAC) via information_schema
-    const grantsRes = await client.query<{
-      table_schema: string;
-      table_name: string;
-      grantor: string;
-      grantee: string;
-      privilege_type: string;
-      is_grantable: "YES" | "NO";
-    }>(
-      `
+    const tableGrantsQuery = `
       select
         table_schema,
         table_name,
@@ -113,9 +560,21 @@ async function main() {
         is_grantable
       from information_schema.role_table_grants
       where table_schema = $1
+        and privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+        ${roles && roles.length > 0 ? `and grantee = ANY($2)` : ""}
       order by table_name, grantee, privilege_type;
-      `,
-      [schema]
+    `;
+
+    const grantsRes = await client.query<{
+      table_schema: string;
+      table_name: string;
+      grantor: string;
+      grantee: string;
+      privilege_type: string;
+      is_grantable: "YES" | "NO";
+    }>(
+      tableGrantsQuery,
+      roles && roles.length > 0 ? [schema, roles] : [schema]
     );
 
     // 3) RLS policies
@@ -198,6 +657,66 @@ async function main() {
       [schema]
     );
 
+    // 5) Column-level privileges
+    const columnGrantsQuery = `
+      select
+        table_schema,
+        table_name,
+        column_name,
+        grantor,
+        grantee,
+        privilege_type,
+        is_grantable
+      from information_schema.column_privileges
+      where table_schema = $1
+        and privilege_type IN ('INSERT', 'UPDATE')
+        ${roles && roles.length > 0 ? `and grantee = ANY($2)` : ""}
+      order by table_name, column_name, grantee, privilege_type;
+    `;
+
+    const columnGrantsRes = await client.query<{
+      table_schema: string;
+      table_name: string;
+      column_name: string;
+      grantor: string;
+      grantee: string;
+      privilege_type: string;
+      is_grantable: "YES" | "NO";
+    }>(
+      columnGrantsQuery,
+      roles && roles.length > 0 ? [schema, roles] : [schema]
+    );
+
+    // 6) Table triggers
+    const triggersRes = await client.query<{
+      trigger_schema: string;
+      trigger_name: string;
+      event_object_table: string;
+      action_timing: string;
+      event_manipulation: string;
+      action_orientation: string;
+      action_statement: string;
+      action_condition: string | null;
+      action_order: number;
+    }>(
+      `
+      select
+        trigger_schema,
+        trigger_name,
+        event_object_table,
+        action_timing,
+        event_manipulation,
+        action_orientation,
+        action_statement,
+        action_condition,
+        action_order
+      from information_schema.triggers
+      where trigger_schema = $1
+      order by event_object_table, action_order, trigger_name;
+      `,
+      [schema]
+    );
+
     // Build an index of grants by table
     const grantsByTable = new Map<
       string,
@@ -220,13 +739,65 @@ async function main() {
       });
     }
 
+    // Build an index of column grants by table
+    const columnGrantsByTable = new Map<
+      string,
+      Array<{
+        column_name: string;
+        grantor: string;
+        grantee: string;
+        privilege: string;
+        is_grantable: boolean;
+      }>
+    >();
+
+    for (const g of columnGrantsRes.rows) {
+      const key = `${g.table_schema}.${g.table_name}`;
+      if (!columnGrantsByTable.has(key)) columnGrantsByTable.set(key, []);
+      columnGrantsByTable.get(key)!.push({
+        column_name: g.column_name,
+        grantor: g.grantor,
+        grantee: g.grantee,
+        privilege: g.privilege_type,
+        is_grantable: g.is_grantable === "YES",
+      });
+    }
+
+    // Build an index of triggers by table
+    const triggersByTable = new Map<
+      string,
+      Array<{
+        trigger_name: string;
+        action_timing: string;
+        event_manipulation: string;
+        action_orientation: string;
+        action_statement: string;
+        action_condition: string | null;
+        action_order: number;
+      }>
+    >();
+
+    for (const t of triggersRes.rows) {
+      const key = `${t.trigger_schema}.${t.event_object_table}`;
+      if (!triggersByTable.has(key)) triggersByTable.set(key, []);
+      triggersByTable.get(key)!.push({
+        trigger_name: t.trigger_name,
+        action_timing: t.action_timing,
+        event_manipulation: t.event_manipulation,
+        action_orientation: t.action_orientation,
+        action_statement: t.action_statement,
+        action_condition: t.action_condition,
+        action_order: t.action_order,
+      });
+    }
+
     // Build an index of policies by table
     const policiesByTable = new Map<
       string,
       Array<{
         policy: string;
         cmd: string;
-        roles: string[];
+        roles: string[] | null;
         permissive: string;
         using?: string | null;
         with_check?: string | null;
@@ -238,7 +809,7 @@ async function main() {
       policiesByTable.get(key)!.push({
         policy: p.policyname,
         cmd: p.cmd,
-        roles: p.roles ?? ["PUBLIC"],
+        roles: p.roles || [],
         permissive: p.permissive,
         using: p.qual,
         with_check: p.with_check,
@@ -265,7 +836,18 @@ async function main() {
                 a.grantee.localeCompare(b.grantee) ||
                 a.privilege.localeCompare(b.privilege)
             ),
+            column_grants: (columnGrantsByTable.get(key) ?? []).sort(
+              (a, b) =>
+                a.column_name.localeCompare(b.column_name) ||
+                a.grantee.localeCompare(b.grantee) ||
+                a.privilege.localeCompare(b.privilege)
+            ),
           },
+          triggers: (triggersByTable.get(key) ?? []).sort(
+            (a, b) =>
+              a.action_order - b.action_order ||
+              a.trigger_name.localeCompare(b.trigger_name)
+          ),
         };
       }),
       default_table_privileges: defaultPrivsRes.rows.map((row) => ({
@@ -278,73 +860,54 @@ async function main() {
       })),
     };
 
-    // Output
-    const outPath = (() => {
-      if (out) return out;
-      const ext = format === "md" ? "md" : "json";
-      return path.resolve(process.cwd(), `rbac_rls_${schema}.${ext}`);
-    })();
+    // Output - Generate SQL files
+    const outputDir = out
+      ? out
+      : path.resolve(process.cwd(), `${schema}_rbac_rls_sql`);
 
-    if (format === "md") {
-      const mdParts: string[] = [];
-      mdParts.push(`# RBAC & RLS for schema \`${schema}\``);
-      mdParts.push(`_Generated at: ${data.generated_at_utc}_\n`);
-
-      for (const t of data.tables) {
-        mdParts.push(`## ${schema}.${t.table} (owner: \`${t.owner}\`)`);
-        mdParts.push(
-          `- RLS enabled: \`${t.rls.enabled}\`, force: \`${t.rls.force}\``
-        );
-        if (t.rls.policies.length === 0) {
-          mdParts.push(`- Policies: _none_`);
-        } else {
-          mdParts.push(`### Policies`);
-          for (const p of t.rls.policies) {
-            mdParts.push(
-              `- **${p.policy}** (${p.cmd}, ${
-                p.permissive
-              }); roles: \`${p.roles?.join?.(", ")}\`` +
-                (p.using ? `\n  - USING: \`${p.using}\`` : "") +
-                (p.with_check ? `\n  - WITH CHECK: \`${p.with_check}\`` : "")
-            );
-          }
-        }
-        mdParts.push(`### Table Grants`);
-        if (t.rbac.table_grants.length === 0) {
-          mdParts.push(`_none_\n`);
-        } else {
-          mdParts.push(`| Grantee | Privilege | Grantable | Grantor |`);
-          mdParts.push(`|---|---|---|---|`);
-          for (const g of t.rbac.table_grants) {
-            mdParts.push(
-              `| \`${g.grantee}\` | \`${g.privilege}\` | \`${g.is_grantable}\` | \`${g.grantor}\` |`
-            );
-          }
-          mdParts.push("");
-        }
-      }
-
-      mdParts.push(`## Default table privileges for \`${schema}\``);
-      if (data.default_table_privileges.length === 0) {
-        mdParts.push(`_none_`);
-      } else {
-        mdParts.push(
-          `| Default ACL Owner | Grantee | Privilege | Grantable | Grantor |`
-        );
-        mdParts.push(`|---|---|---|---|---|`);
-        for (const d of data.default_table_privileges) {
-          mdParts.push(
-            `| \`${d.owner_of_default_acl}\` | \`${d.grantee}\` | \`${d.privilege}\` | \`${d.is_grantable}\` | \`${d.grantor}\` |`
-          );
-        }
-      }
-
-      fs.writeFileSync(outPath, mdParts.join("\n"), "utf8");
-    } else {
-      fs.writeFileSync(outPath, JSON.stringify(data, null, 2), "utf8");
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    console.log(`Wrote ${format?.toUpperCase()} to: ${outPath}`);
+    // Generate one SQL file per table
+    let filesCreated = 0;
+    for (const table of data.tables) {
+      const sqlContent = generateTableSQL(schema, table, roles);
+      const filename = `${table.table}.sql`;
+      const filepath = path.join(outputDir, filename);
+
+      fs.writeFileSync(filepath, sqlContent, "utf8");
+      filesCreated++;
+    }
+
+    // Also create a summary file with default privileges if any
+    if (data.default_table_privileges.length > 0) {
+      const summaryLines: string[] = [];
+      summaryLines.push(`-- Default table privileges for schema ${schema}`);
+      summaryLines.push(`-- Generated at: ${data.generated_at_utc}`);
+      summaryLines.push("");
+
+      for (const dp of data.default_table_privileges) {
+        summaryLines.push(
+          `-- Default ACL: ${dp.owner_of_default_acl} grants ${
+            dp.privilege
+          } to ${dp.grantee}${dp.is_grantable ? " (with grant option)" : ""}`
+        );
+        summaryLines.push(
+          `ALTER DEFAULT PRIVILEGES IN SCHEMA ${schema} GRANT ${
+            dp.privilege
+          } ON TABLES TO ${dp.grantee}${
+            dp.is_grantable ? " WITH GRANT OPTION" : ""
+          };`
+        );
+      }
+
+      const summaryPath = path.join(outputDir, "_default_privileges.sql");
+      fs.writeFileSync(summaryPath, summaryLines.join("\n"), "utf8");
+      filesCreated++;
+    }
+
+    console.log(`Created ${filesCreated} SQL files in: ${outputDir}`);
   } finally {
     await client.end();
   }
