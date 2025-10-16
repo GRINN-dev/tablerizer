@@ -1,0 +1,134 @@
+name: 🎲 Publish Tablerizer
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.2.3
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  test:
+    name: 🧪 Test Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📋 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build package
+        run: npm run build
+
+      - name: ✅ Test CLI binary
+        run: |
+          node bin/tablerizer.js --version
+          node bin/tablerizer.js --help
+
+      - name: 🧪 Test library imports
+        run: |
+          node -e "
+          (async () => {
+            try {
+              const { Tablerizer, exportTables } = await import('./lib/index.js');
+              console.log('✅ Library imports working');
+              console.log('- Tablerizer:', typeof Tablerizer);
+              console.log('- exportTables:', typeof exportTables);
+            } catch (error) {
+              console.error('❌ Import test failed:', error.message);
+              process.exit(1);
+            }
+          })();
+          "
+
+  publish:
+    name: 📤 Publish to npm
+    needs: test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: 📋 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build package
+        run: npm run build
+
+      - name: 📋 Verify package contents
+        run: npm pack --dry-run
+
+      - name: 🚀 Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 🎉 Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: 🎲 Tablerizer ${{ github.ref_name }}
+          body: |
+            ## 🎲 Tablerizer ${{ github.ref_name }}
+            
+            ### 📦 Installation
+            ```bash
+            npm install -g tablerizer@${{ github.ref_name }}
+            ```
+            
+            ### 🔗 Links
+            - **npm**: https://www.npmjs.com/package/tablerizer
+            - **Documentation**: https://github.com/GRINN-dev/tablerizer#readme
+            
+            ### 📋 Changes
+            See commit history for detailed changes in this release.
+            
+            ### 🎯 Usage
+            ```bash
+            # CLI usage
+            tablerizer --schemas "app_public" --scope all
+            
+            # With environment variables
+            export DATABASE_URL="postgres://..."
+            tablerizer --config .tablerizerrc
+            ```
+          draft: false
+          prerelease: false
+
+  security:
+    name: 🔒 Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📋 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Run security audit
+        run: npm audit --audit-level moderate
+
+      - name: 🔒 Check for vulnerabilities
+        run: npm audit --audit-level high --dry-run

@@ -45,7 +45,11 @@
     "version": "node bin/tablerizer.js --version",
     "clean": "rm -rf lib",
     "prepublishOnly": "npm run clean && npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "release:patch": "npm version patch && git push origin main && git push origin --tags",
+    "release:minor": "npm version minor && git push origin main && git push origin --tags",
+    "release:major": "npm version major && git push origin main && git push origin --tags",
+    "check": "npm run build && npm pack --dry-run"
   },
   "keywords": [
     "postgresql",

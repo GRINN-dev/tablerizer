@@ -1,0 +1,73 @@
+name: 🧪 Test & Validate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: 🧪 Test on Node ${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: 📋 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build package
+        run: npm run build
+
+      - name: ✅ Test CLI binary
+        run: |
+          node bin/tablerizer.js --version
+          node bin/tablerizer.js --help
+
+      - name: 🧪 Test library imports
+        run: |
+          node -e "
+          (async () => {
+            try {
+              const { Tablerizer, exportTables } = await import('./lib/index.js');
+              console.log('✅ Library imports working on Node ${{ matrix.node-version }}');
+            } catch (error) {
+              console.error('❌ Import test failed:', error.message);
+              process.exit(1);
+            }
+          })();
+          "
+
+  lint:
+    name: 🎨 Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📋 Install dependencies
+        run: npm ci
+
+      - name: 🎨 Check TypeScript
+        run: npx tsc --noEmit
+
+      - name: 📋 Verify package structure
+        run: npm pack --dry-run
