@@ -145,7 +145,8 @@ export class Tablerizer {
           const sqlContent = generateTableSQL(
             schema,
             tableData,
-            this.options.role_mappings
+            this.options.role_mappings,
+            this.options.include_date
           );
 
           // Write file
@@ -187,7 +188,8 @@ export class Tablerizer {
           const sqlContent = generateFunctionSQL(
             func,
             this.options.roles,
-            this.options.role_mappings
+            this.options.role_mappings,
+            this.options.include_date
           );
 
           // Write file - handle function overloading by including arguments hash
@@ -249,7 +251,8 @@ export class Tablerizer {
     const sqlContent = generateTableSQL(
       schema,
       tableData,
-      this.options.role_mappings
+      this.options.role_mappings,
+      this.options.include_date
     );
 
     // Write file if output path is provided
@@ -287,7 +290,8 @@ export class Tablerizer {
     const sqlContent = generateFunctionSQL(
       func,
       this.options.roles,
-      this.options.role_mappings
+      this.options.role_mappings,
+      this.options.include_date
     );
 
     // Write file if output path is provided

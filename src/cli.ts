@@ -48,6 +48,8 @@ SPELLBOOK (OPTIONS):
   --out <directory>   📁 Output sanctum (default: ./tables/)
   --roles <list>      🔐 Filter by magical roles, comma-separated
   --scope <type>      🎯 Export scope: tables, functions, or all (default: all)
+  --include-date      📅 Include generation date in file headers
+  --no-date          🚫 Exclude date from headers (default)
   --help, -h         ❓ Show this magical help
   --version, -v      ℹ️  Show version of the wizard
 
@@ -147,6 +149,12 @@ export function parseCliArgs(): Partial<CliArgs> {
           process.exit(1);
         }
         i++;
+        break;
+      case "--include-date":
+        result.include_date = true;
+        break;
+      case "--no-date":
+        result.include_date = false;
         break;
       case "--config":
         // Config file path is handled separately

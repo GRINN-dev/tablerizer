@@ -12,6 +12,7 @@ export interface Config {
   database_url?: string;
   role_mappings?: Record<string, string>;
   scope?: ExportScope | ExportScope[];
+  include_date?: boolean;
 }
 
 export type ExportScope = "tables" | "functions" | "all";
@@ -23,6 +24,7 @@ export interface TablerizerOptions {
   database_url?: string;
   role_mappings?: Record<string, string>;
   scope?: ExportScope | ExportScope[];
+  include_date?: boolean;
 }
 
 export interface CliArgs {
@@ -32,6 +34,7 @@ export interface CliArgs {
   database_url?: string;
   role_mappings: Record<string, string>;
   scope?: ExportScope | ExportScope[];
+  include_date?: boolean;
 }
 
 /**
@@ -138,6 +141,7 @@ export function resolveConfig(
     database_url: config.database_url,
     role_mappings: config.role_mappings || {},
     scope: config.scope || "all",
+    include_date: config.include_date,
   };
 
   // Override with environment variables
@@ -176,6 +180,9 @@ export function resolveConfig(
   if (cliArgs.scope) {
     resolved.scope = cliArgs.scope;
   }
+  if (cliArgs.include_date !== undefined) {
+    resolved.include_date = cliArgs.include_date;
+  }
 
   return resolved;
 }
@@ -211,6 +218,7 @@ export function getDefaultConfig(): TablerizerOptions {
     database_url: undefined,
     role_mappings: {},
     scope: "all",
+    include_date: false, // Default: no date in headers
   };
 }
 
@@ -228,5 +236,6 @@ export function mergeConfigs(
     database_url: override.database_url || base.database_url,
     role_mappings: { ...base.role_mappings, ...override.role_mappings },
     scope: override.scope || base.scope || "all",
+    include_date: override.include_date !== undefined ? override.include_date : base.include_date ?? false,
   };
 }
