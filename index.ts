@@ -531,10 +531,10 @@ function generateTableSQL(
     lines.push(`-- Owner: ${table.owner}`);
     lines.push(`-- Columns: ${table.columns.length}`);
     lines.push("");
-    
+
     for (const col of table.columns) {
       let columnDef = `-- ${col.column_name}`;
-      
+
       // Build type information
       let typeInfo = col.data_type;
       if (col.character_maximum_length) {
@@ -544,19 +544,19 @@ function generateTableSQL(
       } else if (col.numeric_precision) {
         typeInfo += `(${col.numeric_precision})`;
       }
-      
+
       columnDef += ` ${typeInfo}`;
-      
+
       // Add nullable/not null
-      if (col.is_nullable === 'NO') {
-        columnDef += ' NOT NULL';
+      if (col.is_nullable === "NO") {
+        columnDef += " NOT NULL";
       }
-      
+
       // Add default if exists
       if (col.column_default) {
         columnDef += ` DEFAULT ${col.column_default}`;
       }
-      
+
       lines.push(columnDef);
     }
   }
@@ -584,7 +584,7 @@ async function main() {
 
     for (const schema of schemas) {
       console.log(`\nProcessing schema: ${schema}`);
-      
+
       // Create schema-specific output directory
       const schemaOutputDir = path.join(baseOutputDir, schema);
       if (!fs.existsSync(schemaOutputDir)) {
@@ -977,8 +977,8 @@ async function main() {
                 a.action_order - b.action_order ||
                 a.trigger_name.localeCompare(b.trigger_name)
             ),
-            columns: (columnsByTable.get(key) ?? []).sort(
-              (a, b) => a.column_name.localeCompare(b.column_name)
+            columns: (columnsByTable.get(key) ?? []).sort((a, b) =>
+              a.column_name.localeCompare(b.column_name)
             ),
           };
         }),
@@ -1025,16 +1025,23 @@ async function main() {
           );
         }
 
-        const summaryPath = path.join(schemaOutputDir, "_default_privileges.sql");
+        const summaryPath = path.join(
+          schemaOutputDir,
+          "_default_privileges.sql"
+        );
         fs.writeFileSync(summaryPath, summaryLines.join("\n"), "utf8");
         schemaFilesCreated++;
       }
 
-      console.log(`  Created ${schemaFilesCreated} SQL files in: ${schemaOutputDir}`);
+      console.log(
+        `  Created ${schemaFilesCreated} SQL files in: ${schemaOutputDir}`
+      );
       totalFiles += schemaFilesCreated;
     }
 
-    console.log(`\nTotal: ${totalFiles} SQL files created across ${schemas.length} schema(s) in: ${baseOutputDir}`);
+    console.log(
+      `\nTotal: ${totalFiles} SQL files created across ${schemas.length} schema(s) in: ${baseOutputDir}`
+    );
   } finally {
     await client.end();
   }
