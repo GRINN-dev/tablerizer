@@ -29,7 +29,7 @@
     }
   },
   "bin": {
-    "tablerizer": "./bin/tablerizer.js"
+    "tablerizer": "bin/tablerizer.js"
   },
   "files": [
     "lib/**/*",
@@ -65,11 +65,11 @@
     "triggers",
     "constraints"
   ],
-  "author": "LouisLec <louis@grinn.tech>",
+  "author": "louislec <louis@grinn.tech>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/GRINN-dev/tablerizer.git"
+    "url": "git+https://github.com/GRINN-dev/tablerizer.git"
   },
   "bugs": {
     "url": "https://github.com/GRINN-dev/tablerizer/issues"

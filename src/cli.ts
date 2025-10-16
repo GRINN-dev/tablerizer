@@ -266,3 +266,64 @@ export function displayConnectionStatus(connecting: boolean): void {
 export function displayProcessingStatus(): void {
   console.log(`\\n🚀 The table export wizard is working...\\n`);
 }
+
+/**
+ * Main CLI runner function
+ */
+export async function runCLI(): Promise<void> {
+  // Import here to avoid circular dependencies
+  const { Tablerizer } = await import("./index.js");
+  const { resolveConfig } = await import("./config.js");
+
+  try {
+    // Show banner
+    showBanner();
+
+    // Parse CLI args
+    const cliArgs = parseCliArgs();
+    const configPath = getConfigPath();
+
+    // Resolve configuration
+    const config = await resolveConfig(cliArgs, configPath);
+
+    // Display configuration summary
+    displayConfigSummary(config);
+    displayConnectionStatus(true);
+
+    // Create and run tablerizer
+    const tablerizer = new Tablerizer(config);
+    await tablerizer.connect();
+
+    displayConnectionStatus(false);
+    displayProcessingStatus();
+
+    let progressCounter = 0;
+
+    const result = await tablerizer.export((progress) => {
+      progressCounter++;
+      const percentage = Math.round((progress.progress / progress.total) * 100);
+      console.log(
+        `    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${percentage}%)`
+      );
+    });
+
+    await tablerizer.disconnect();
+
+    // Display completion summary
+    displayCompletionSummary({
+      schemas: result.schemas,
+      totalFiles: result.totalFiles,
+      tableFiles: result.tableFiles,
+      functionFiles: result.functionFiles,
+      outputPath: result.outputPath,
+      roleMappings: config.role_mappings,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      displayError(error.message);
+    } else {
+      displayError("Unknown error occurred");
+    }
+    throw error;
+  }
+}
