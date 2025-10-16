@@ -2,17 +2,50 @@
   "name": "tablerizer",
   "version": "1.0.0",
   "description": "🎲 Tablerizer - The PostgreSQL table export wizard! Generate SQL files for RBAC, RLS, triggers, and schema documentation",
-  "main": "index.ts",
-  "module": "index.ts",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "type": "module",
-  "bin": {
-    "tablerizer": "./index.ts"
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts"
+    },
+    "./cli": {
+      "import": "./lib/cli.js",
+      "types": "./lib/cli.d.ts"
+    },
+    "./config": {
+      "import": "./lib/config.js",
+      "types": "./lib/config.d.ts"
+    },
+    "./database": {
+      "import": "./lib/database.js",
+      "types": "./lib/database.d.ts"
+    },
+    "./generators": {
+      "import": "./lib/generators.js",
+      "types": "./lib/generators.d.ts"
+    }
   },
+  "bin": {
+    "tablerizer": "./bin/tablerizer.js"
+  },
+  "files": [
+    "lib/**/*",
+    "bin/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "start": "bun index.ts",
-    "help": "bun index.ts --help",
-    "version": "bun index.ts --version",
-    "dev": "bun --watch index.ts"
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node bin/tablerizer.js",
+    "help": "node bin/tablerizer.js --help",
+    "version": "node bin/tablerizer.js --version",
+    "clean": "rm -rf lib",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "postgresql",
@@ -26,18 +59,34 @@
     "graphile",
     "table-export",
     "schema",
-    "wizard"
+    "wizard",
+    "permissions",
+    "policies",
+    "triggers",
+    "constraints"
   ],
-  "author": "Your Name",
+  "author": "LouisLec <louis@grinn.tech>",
   "license": "MIT",
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/pg": "^8.15.5"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GRINN-dev/tablerizer.git"
   },
-  "peerDependencies": {
+  "bugs": {
+    "url": "https://github.com/GRINN-dev/tablerizer/issues"
+  },
+  "homepage": "https://github.com/GRINN-dev/tablerizer#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.15.5",
     "typescript": "^5.0.0"
   },
   "dependencies": {
     "pg": "^8.16.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
   }
 }
