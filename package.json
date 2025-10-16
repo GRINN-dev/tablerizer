@@ -1,6 +1,6 @@
 {
   "name": "tablerizer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "🎲 Tablerizer - The PostgreSQL table export wizard! Generate SQL files for RBAC, RLS, triggers, and schema documentation",
   "main": "./lib/index.js",
   "module": "./lib/index.js",
