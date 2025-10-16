@@ -1,17 +1,18 @@
 {
-  "name": "pgrbac",
+  "name": "tablerizer",
   "version": "1.0.0",
-  "description": "PostgreSQL RBAC/RLS Export Tool - Generate SQL files to recreate table privileges, RLS policies, triggers, and constraints",
+  "description": "🎲 Tablerizer - The PostgreSQL table export wizard! Generate SQL files for RBAC, RLS, triggers, and schema documentation",
   "main": "index.ts",
   "module": "index.ts",
   "type": "module",
   "bin": {
-    "pgrbac": "./index.ts"
+    "tablerizer": "./index.ts"
   },
   "scripts": {
     "start": "bun index.ts",
     "help": "bun index.ts --help",
-    "version": "bun index.ts --version"
+    "version": "bun index.ts --version",
+    "dev": "bun --watch index.ts"
   },
   "keywords": [
     "postgresql",
@@ -22,7 +23,10 @@
     "privileges",
     "sql",
     "migration",
-    "graphile"
+    "graphile",
+    "table-export",
+    "schema",
+    "wizard"
   ],
   "author": "Your Name",
   "license": "MIT",

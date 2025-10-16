@@ -1,16 +1,16 @@
 #!/usr/bin/env ts-node
 
 /**
- * 🛡️ pgrbac - PostgreSQL RBAC/RLS Export Tool
+ * 🎲 Tablerizer - The PostgreSQL Table Export Wizard!
  *
  * Generate SQL files to recreate RBAC (table privileges), RLS (policies), triggers,
- * and constraints for all tables in schemas with comprehensive documentation.
+ * constraints, and comprehensive schema documentation for all your tables.
  *
  * Usage:
- *   pgrbac --schemas "schema1,schema2" --out ./sql_output
- *   pgrbac --config ./config.json
- *   pgrbac (uses .pgrbarc if present)
- *   DATABASE_URL=postgres://user:pass@host:5432/db pgrbac --schemas "my_schema"
+ *   tablerizer --schemas "schema1,schema2" --out ./sql_output
+ *   tablerizer --config ./config.json
+ *   tablerizer (uses .tablerizerrc if present)
+ *   DATABASE_URL=postgres://user:pass@host:5432/db tablerizer --schemas "my_schema"
  *
  * Options:
  *   --config   Path to configuration file (JSON)
@@ -22,7 +22,7 @@
  *   --help     Show help information
  *   --version  Show version information
  *
- * Config file format (.pgrbarc or custom JSON):
+ * Config file format (.tablerizerrc or custom JSON):
  *   {
  *     "schemas": ["schema1", "schema2"],
  *     "out": "./output",
@@ -44,9 +44,25 @@ import fs from "fs";
 import path from "path";
 import { Client } from "pg";
 
-const TOOL_NAME = "pgrbac";
+const TOOL_NAME = "tablerizer";
 const VERSION = "1.0.0";
 
+// ASCII Art for the tool
+const ASCII_ART = `
+████████╗ █████╗ ██████╗ ██╗     ███████╗██████╗ ██╗███████╗███████╗██████╗ 
+╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝██╔══██╗██║╚══███╔╝██╔════╝██╔══██╗
+   ██║   ███████║██████╔╝██║     █████╗  ██████╔╝██║  ███╔╝ █████╗  ██████╔╝
+   ██║   ██╔══██║██╔══██╗██║     ██╔══╝  ██╔══██╗██║ ███╔╝  ██╔══╝  ██╔══██╗
+   ██║   ██║  ██║██████╔╝███████╗███████╗██║  ██║██║███████╗███████╗██║  ██║
+   ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═╝  ╚═╝
+   
+   🎲 The PostgreSQL Table Export Wizard v${VERSION} 
+   Transform your database into organized, documented SQL files!
+`;
+
+function showBanner() {
+  console.log(ASCII_ART);
+}
 type Config = {
   schemas?: string[];
   out?: string;
@@ -67,16 +83,16 @@ type Args = {
 
 function showHelp() {
   console.log(`
-🛡️  ${TOOL_NAME} v${VERSION} - PostgreSQL RBAC/RLS Export Tool
+🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!
 
-Generate SQL files to recreate table privileges, RLS policies, triggers, and constraints
-with comprehensive documentation and support for role mappings.
+Transform your database tables into organized, documented SQL files with RBAC, 
+RLS policies, triggers, constraints, and comprehensive schema documentation.
 
 USAGE:
   ${TOOL_NAME} [options]
   ${TOOL_NAME} --schemas "app_public,app_private" --out ./exports
   ${TOOL_NAME} --config ./my-config.json
-  ${TOOL_NAME} (automatically uses .pgrbarc if present)
+  ${TOOL_NAME} (automatically uses .tablerizerrc if present)
 
 OPTIONS:
   --schemas <list>     Schema names (comma-separated)
@@ -87,7 +103,7 @@ OPTIONS:
   --version            Show version
 
 CONFIGURATION:
-  Automatic config detection: .pgrbarc, .pgrbarc.json
+  Automatic config detection: .tablerizerrc, .tablerizerrc.json
   Config file format: JSON with schemas, out, roles, role_mappings
   
 ENVIRONMENT VARIABLES:
@@ -101,16 +117,24 @@ EXAMPLES:
   ${TOOL_NAME} --config ./prod-config.json
   DATABASE_URL="postgres://..." ${TOOL_NAME} --schemas "app_public"
 
-For more information: https://github.com/your-repo/pgrbac
+MAGIC FEATURES:
+  🎲 Role Mappings    - Replace roles with placeholders for Graphile Migrate
+  📋 Rich Documentation - Table schema, foreign keys, constraints, comments  
+  🧹 Idempotent Scripts - Safe cleanup and recreation sections
+  ⚡ Multi-Schema Export - Organized folder structure
+
+For more wizardry: https://github.com/your-repo/tablerizer
 `);
 }
 
 function showVersion() {
-  console.log(`${TOOL_NAME} v${VERSION}`);
+  console.log(
+    `🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!`
+  );
 }
 
 function findConfigFile(): string | null {
-  const possibleConfigs = [".pgrbarc", ".pgrbarc.json"];
+  const possibleConfigs = [".tablerizerrc", ".tablerizerrc.json"];
 
   for (const configName of possibleConfigs) {
     const configPath = path.resolve(process.cwd(), configName);
@@ -913,32 +937,30 @@ function generateTableSQL(
 async function main() {
   const { schemas, out, roles, database_url, role_mappings } = parseArgs();
 
-  console.log(
-    `\n🛡️  ${TOOL_NAME} v${VERSION} - PostgreSQL RBAC/RLS Export Tool\n`
-  );
+  showBanner();
 
   const dbUrl = database_url || process.env.DATABASE_URL;
   if (!dbUrl) {
     console.error(`
-❌ Database connection required!
+❌ Database connection required for the magic to work!
 
 Please provide DATABASE_URL using one of:
   • Environment: DATABASE_URL="postgres://..."
   • Config file: "database_url": "postgres://..."
   
-Run --help for more information.
+Run --help for more wizardry.
 `);
     process.exit(1);
   }
 
-  console.log(`🔌 Connecting to database...`);
+  console.log(`� Connecting to database...`);
   const client = new Client({ connectionString: dbUrl });
 
   try {
     await client.connect();
-    console.log(`✅ Connected successfully\n`);
+    console.log(`✨ Connected successfully! The magic begins...\n`);
   } catch (error) {
-    console.error(`❌ Failed to connect to database:`, error);
+    console.error(`💥 Connection spell failed:`, error);
     process.exit(1);
   }
 
@@ -946,23 +968,23 @@ Run --help for more information.
     const baseOutputDir = out || "./tables";
     let totalFiles = 0;
 
-    console.log(`📁 Output directory: ${path.resolve(baseOutputDir)}`);
+    console.log(`� Conjuring files in: ${path.resolve(baseOutputDir)}`);
     console.log(`🎯 Target schemas: ${schemas.join(", ")}`);
 
     if (roles && roles.length > 0) {
       console.log(`🔐 Filtering for roles: ${roles.join(", ")}`);
     } else {
-      console.log(`🔐 Including all roles`);
+      console.log(`🔐 Including all roles (full power!)`);
     }
 
     if (role_mappings && Object.keys(role_mappings).length > 0) {
-      console.log(`🔄 Role mappings configured:`);
+      console.log(`🎭 Role transformation spells:`);
       for (const [from, to] of Object.entries(role_mappings)) {
-        console.log(`   ${from} → ${to}`);
+        console.log(`   ✨ ${from} → ${to}`);
       }
     }
 
-    console.log(`\n🚀 Starting export...\n`);
+    console.log(`\n🚀 The table export wizard is working...\n`);
 
     for (const schema of schemas) {
       console.log(`📋 Processing schema: ${schema}`);
@@ -1622,19 +1644,23 @@ Run --help for more information.
       totalFiles += schemaFilesCreated;
     }
 
-    console.log(`\n🎉 Export completed successfully!`);
+    console.log(`� Export wizard complete!`);
+    console.log(`📊 Summary:`);
+    console.log(`   • Schemas processed: ${schemas.length}`);
+    console.log(`   • Total files created: ${totalFiles}`);
     console.log(
-      `📊 Total: ${totalFiles} SQL files created across ${schemas.length} schema(s)`
+      `   • Output location: ${path.relative(process.cwd(), baseOutputDir)}`
     );
-    console.log(`📁 Location: ${path.relative(process.cwd(), baseOutputDir)}`);
 
     if (role_mappings && Object.keys(role_mappings).length > 0) {
       console.log(
-        `🔄 Role mappings applied: ${
+        `   • Role transformation spells: ${
           Object.keys(role_mappings).length
-        } mappings`
+        } applied`
       );
     }
+
+    console.log(`\n✨ Your database spells are ready! ✨\n`);
 
     console.log(`\n💡 Next steps:`);
     console.log(`   • Review the generated SQL files`);
