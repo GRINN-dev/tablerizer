@@ -360,6 +360,26 @@ function generateTableSQL(
       numeric_precision: number | null;
       numeric_scale: number | null;
     }>;
+    foreign_keys?: Array<{
+      constraint_name: string;
+      column_name: string;
+      foreign_table_schema: string;
+      foreign_table_name: string;
+      foreign_column_name: string;
+      update_rule: string;
+      delete_rule: string;
+    }>;
+    constraints?: Array<{
+      constraint_name: string;
+      constraint_type: string;
+      column_name: string | null;
+      check_clause: string | null;
+    }>;
+    comments?: Array<{
+      column_name: string | null;
+      comment: string;
+      comment_type: string;
+    }>;
   },
   roles?: string[]
 ): string {
@@ -532,6 +552,18 @@ function generateTableSQL(
     lines.push(`-- Columns: ${table.columns.length}`);
     lines.push("");
 
+    // Add table comments if they exist
+    if (table.comments) {
+      const tableComments = table.comments.filter(c => c.comment_type === 'TABLE');
+      if (tableComments.length > 0) {
+        for (const comment of tableComments) {
+          lines.push(`COMMENT ON TABLE ${schema}.${table.table} IS ${comment.comment ? `'${comment.comment.replace(/'/g, "''")}'` : 'NULL'};`);
+        }
+        lines.push("");
+      }
+    }
+
+    // Add column definitions
     for (const col of table.columns) {
       let columnDef = `-- ${col.column_name}`;
 
@@ -558,6 +590,75 @@ function generateTableSQL(
       }
 
       lines.push(columnDef);
+
+      // Add column comments if they exist
+      if (table.comments) {
+        const columnComments = table.comments.filter(c => 
+          c.comment_type === 'COLUMN' && c.column_name === col.column_name
+        );
+        for (const comment of columnComments) {
+          lines.push(`COMMENT ON COLUMN ${schema}.${table.table}.${col.column_name} IS ${comment.comment ? `'${comment.comment.replace(/'/g, "''")}'` : 'NULL'};`);
+        }
+      }
+    }
+
+    // Add foreign key constraints
+    if (table.foreign_keys && table.foreign_keys.length > 0) {
+      lines.push("");
+      lines.push("-- Foreign Key Constraints:");
+      const fkGroups = new Map<string, Array<typeof table.foreign_keys[0]>>();
+      
+      // Group foreign keys by constraint name
+      for (const fk of table.foreign_keys) {
+        if (!fkGroups.has(fk.constraint_name)) {
+          fkGroups.set(fk.constraint_name, []);
+        }
+        fkGroups.get(fk.constraint_name)!.push(fk);
+      }
+
+      for (const [constraintName, fks] of fkGroups.entries()) {
+        const sourceColumns = fks.map(fk => fk.column_name).join(', ');
+        const targetColumns = fks.map(fk => fk.foreign_column_name).join(', ');
+        const targetTable = `${fks[0].foreign_table_schema}.${fks[0].foreign_table_name}`;
+        
+        let fkDef = `-- ${constraintName}: (${sourceColumns}) -> ${targetTable}(${targetColumns})`;
+        if (fks[0].update_rule !== 'NO ACTION' || fks[0].delete_rule !== 'NO ACTION') {
+          fkDef += ` [UPDATE: ${fks[0].update_rule}, DELETE: ${fks[0].delete_rule}]`;
+        }
+        lines.push(fkDef);
+      }
+    }
+
+    // Add other constraints
+    if (table.constraints && table.constraints.length > 0) {
+      lines.push("");
+      lines.push("-- Constraints:");
+      
+      const constraintGroups = new Map<string, Array<typeof table.constraints[0]>>();
+      
+      // Group constraints by name and type
+      for (const constraint of table.constraints) {
+        const key = `${constraint.constraint_name}:${constraint.constraint_type}`;
+        if (!constraintGroups.has(key)) {
+          constraintGroups.set(key, []);
+        }
+        constraintGroups.get(key)!.push(constraint);
+      }
+
+      for (const [key, constraints] of constraintGroups.entries()) {
+        const [constraintName, constraintType] = key.split(':');
+        const constraint = constraints[0];
+        
+        if (constraintType === 'PRIMARY KEY') {
+          const columns = constraints.filter(c => c.column_name).map(c => c.column_name).join(', ');
+          lines.push(`-- ${constraintName}: PRIMARY KEY (${columns})`);
+        } else if (constraintType === 'UNIQUE') {
+          const columns = constraints.filter(c => c.column_name).map(c => c.column_name).join(', ');
+          lines.push(`-- ${constraintName}: UNIQUE (${columns})`);
+        } else if (constraintType === 'CHECK') {
+          lines.push(`-- ${constraintName}: CHECK ${constraint.check_clause || ''}`);
+        }
+      }
     }
   }
 
@@ -818,6 +919,119 @@ async function main() {
         [schema]
       );
 
+      // 8) Foreign key constraints
+      const foreignKeysRes = await client.query<{
+        table_schema: string;
+        table_name: string;
+        constraint_name: string;
+        column_name: string;
+        foreign_table_schema: string;
+        foreign_table_name: string;
+        foreign_column_name: string;
+        update_rule: string;
+        delete_rule: string;
+      }>(
+        `
+        select
+          tc.table_schema,
+          tc.table_name,
+          tc.constraint_name,
+          kcu.column_name,
+          ccu.table_schema as foreign_table_schema,
+          ccu.table_name as foreign_table_name,
+          ccu.column_name as foreign_column_name,
+          rc.update_rule,
+          rc.delete_rule
+        from information_schema.table_constraints as tc
+        join information_schema.key_column_usage as kcu
+          on tc.constraint_name = kcu.constraint_name
+          and tc.table_schema = kcu.table_schema
+        join information_schema.constraint_column_usage as ccu
+          on ccu.constraint_name = tc.constraint_name
+          and ccu.table_schema = tc.table_schema
+        join information_schema.referential_constraints as rc
+          on tc.constraint_name = rc.constraint_name
+          and tc.table_schema = rc.constraint_schema
+        where tc.constraint_type = 'FOREIGN KEY'
+          and tc.table_schema = $1
+        order by tc.table_name, tc.constraint_name, kcu.ordinal_position;
+        `,
+        [schema]
+      );
+
+      // 9) Check constraints and unique constraints
+      const constraintsRes = await client.query<{
+        table_schema: string;
+        table_name: string;
+        constraint_name: string;
+        constraint_type: string;
+        column_name: string | null;
+        check_clause: string | null;
+      }>(
+        `
+        select
+          tc.table_schema,
+          tc.table_name,
+          tc.constraint_name,
+          tc.constraint_type,
+          kcu.column_name,
+          cc.check_clause
+        from information_schema.table_constraints as tc
+        left join information_schema.key_column_usage as kcu
+          on tc.constraint_name = kcu.constraint_name
+          and tc.table_schema = kcu.table_schema
+        left join information_schema.check_constraints as cc
+          on tc.constraint_name = cc.constraint_name
+          and tc.constraint_schema = cc.constraint_schema
+        where tc.constraint_type IN ('CHECK', 'UNIQUE', 'PRIMARY KEY')
+          and tc.table_schema = $1
+        order by tc.table_name, tc.constraint_name, kcu.ordinal_position;
+        `,
+        [schema]
+      );
+
+      // 10) Table and column comments
+      const commentsRes = await client.query<{
+        table_schema: string;
+        table_name: string;
+        column_name: string | null;
+        comment: string;
+        comment_type: string;
+      }>(
+        `
+        select
+          n.nspname as table_schema,
+          c.relname as table_name,
+          null as column_name,
+          obj_description(c.oid) as comment,
+          'TABLE' as comment_type
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where c.relkind = 'r'
+          and n.nspname = $1
+          and obj_description(c.oid) is not null
+        
+        UNION ALL
+        
+        select
+          n.nspname as table_schema,
+          c.relname as table_name,
+          a.attname as column_name,
+          col_description(c.oid, a.attnum) as comment,
+          'COLUMN' as comment_type
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        join pg_attribute a on a.attrelid = c.oid
+        where c.relkind = 'r'
+          and n.nspname = $1
+          and a.attnum > 0
+          and not a.attisdropped
+          and col_description(c.oid, a.attnum) is not null
+        order by table_name, comment_type, column_name;
+        `,
+        [schema]
+      );
+
       // Build an index of grants by table
       const grantsByTable = new Map<
         string,
@@ -945,6 +1159,76 @@ async function main() {
         });
       }
 
+      // Build an index of foreign keys by table
+      const foreignKeysByTable = new Map<
+        string,
+        Array<{
+          constraint_name: string;
+          column_name: string;
+          foreign_table_schema: string;
+          foreign_table_name: string;
+          foreign_column_name: string;
+          update_rule: string;
+          delete_rule: string;
+        }>
+      >();
+
+      for (const fk of foreignKeysRes.rows) {
+        const key = `${fk.table_schema}.${fk.table_name}`;
+        if (!foreignKeysByTable.has(key)) foreignKeysByTable.set(key, []);
+        foreignKeysByTable.get(key)!.push({
+          constraint_name: fk.constraint_name,
+          column_name: fk.column_name,
+          foreign_table_schema: fk.foreign_table_schema,
+          foreign_table_name: fk.foreign_table_name,
+          foreign_column_name: fk.foreign_column_name,
+          update_rule: fk.update_rule,
+          delete_rule: fk.delete_rule,
+        });
+      }
+
+      // Build an index of constraints by table
+      const constraintsByTable = new Map<
+        string,
+        Array<{
+          constraint_name: string;
+          constraint_type: string;
+          column_name: string | null;
+          check_clause: string | null;
+        }>
+      >();
+
+      for (const c of constraintsRes.rows) {
+        const key = `${c.table_schema}.${c.table_name}`;
+        if (!constraintsByTable.has(key)) constraintsByTable.set(key, []);
+        constraintsByTable.get(key)!.push({
+          constraint_name: c.constraint_name,
+          constraint_type: c.constraint_type,
+          column_name: c.column_name,
+          check_clause: c.check_clause,
+        });
+      }
+
+      // Build an index of comments by table
+      const commentsByTable = new Map<
+        string,
+        Array<{
+          column_name: string | null;
+          comment: string;
+          comment_type: string;
+        }>
+      >();
+
+      for (const c of commentsRes.rows) {
+        const key = `${c.table_schema}.${c.table_name}`;
+        if (!commentsByTable.has(key)) commentsByTable.set(key, []);
+        commentsByTable.get(key)!.push({
+          column_name: c.column_name,
+          comment: c.comment,
+          comment_type: c.comment_type,
+        });
+      }
+
       // Shape the final result
       const data = {
         schema,
@@ -979,6 +1263,15 @@ async function main() {
             ),
             columns: (columnsByTable.get(key) ?? []).sort((a, b) =>
               a.column_name.localeCompare(b.column_name)
+            ),
+            foreign_keys: (foreignKeysByTable.get(key) ?? []).sort((a, b) =>
+              a.constraint_name.localeCompare(b.constraint_name)
+            ),
+            constraints: (constraintsByTable.get(key) ?? []).sort((a, b) =>
+              a.constraint_name.localeCompare(b.constraint_name)
+            ),
+            comments: (commentsByTable.get(key) ?? []).sort((a, b) =>
+              (a.column_name || '').localeCompare(b.column_name || '')
             ),
           };
         }),
