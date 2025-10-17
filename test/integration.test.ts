@@ -213,7 +213,7 @@ describe('Tablerizer Integration Tests', () => {
       const content = await fs.readFile(usersFile!.filePath, 'utf-8');
       
       assert.ok(content.includes(':TEST_ROLE'), 'Should apply custom role mappings');
-      assert.ok(!content.includes(process.env.DATABASE_VISITOR), 'Should replace actual role names');
+      assert.ok(!content.includes(process.env.DATABASE_VISITOR || 'tablerizer_visitor'), 'Should replace actual role names');
       
       await tablerizer.disconnect();
     });

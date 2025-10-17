@@ -50,6 +50,8 @@ SPELLBOOK (OPTIONS):
   --scope <type>      🎯 Export scope: tables, functions, views, materialized-views, or all (default: all)
   --include-date      📅 Include generation date in file headers
   --no-date          🚫 Exclude date from headers (default)
+  --clean            🧹 Clean output directory before export (default)
+  --no-clean         🚫 Keep existing files in output directory
   --help, -h         ❓ Show this magical help
   --version, -v      ℹ️  Show version of the wizard
 
@@ -61,6 +63,7 @@ CONFIGURATION SCROLLS:
     "roles": ["admin", "user"],
     "database_url": "postgres://user:pass@host:5432/db",
     "scope": "all",
+    "clean": true,
     "role_mappings": {
       "actual_role": ":PLACEHOLDER_ROLE"
     }
@@ -142,10 +145,18 @@ export function parseCliArgs(): Partial<CliArgs> {
         i++;
         break;
       case "--scope":
-        if (next === "tables" || next === "functions" || next === "views" || next === "materialized-views" || next === "all") {
+        if (
+          next === "tables" ||
+          next === "functions" ||
+          next === "views" ||
+          next === "materialized-views" ||
+          next === "all"
+        ) {
           result.scope = next;
         } else {
-          console.error("❌ Invalid scope. Must be: tables, functions, views, materialized-views, or all");
+          console.error(
+            "❌ Invalid scope. Must be: tables, functions, views, materialized-views, or all"
+          );
           process.exit(1);
         }
         i++;
@@ -155,6 +166,12 @@ export function parseCliArgs(): Partial<CliArgs> {
         break;
       case "--no-date":
         result.include_date = false;
+        break;
+      case "--clean":
+        result.clean = true;
+        break;
+      case "--no-clean":
+        result.clean = false;
         break;
       case "--config":
         // Config file path is handled separately

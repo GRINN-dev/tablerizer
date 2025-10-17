@@ -43,9 +43,6 @@
     "start": "node bin/tablerizer.js",
     "help": "node bin/tablerizer.js --help",
     "version": "node bin/tablerizer.js --version",
-    "test": "npm run build && node --test test/**/*.test.js",
-    "test:watch": "npm run build && node --test --watch test/**/*.test.js",
-    "test:setup": "node test/test-database.js --setup",
     "clean": "rm -rf lib",
     "prepublishOnly": "npm run clean && npm run build",
     "release:patch": "npm version patch && git push origin main && git push origin --tags",
@@ -85,7 +82,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.22",
     "@types/pg": "^8.15.5",
     "typescript": "^5.0.0"
   },

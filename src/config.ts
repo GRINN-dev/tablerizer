@@ -13,9 +13,15 @@ export interface Config {
   role_mappings?: Record<string, string>;
   scope?: ExportScope | ExportScope[];
   include_date?: boolean;
+  clean?: boolean;
 }
 
-export type ExportScope = "tables" | "functions" | "views" | "materialized-views" | "all";
+export type ExportScope =
+  | "tables"
+  | "functions"
+  | "views"
+  | "materialized-views"
+  | "all";
 
 export interface TablerizerOptions {
   schemas: string[];
@@ -25,6 +31,7 @@ export interface TablerizerOptions {
   role_mappings?: Record<string, string>;
   scope?: ExportScope | ExportScope[];
   include_date?: boolean;
+  clean?: boolean;
 }
 
 export interface CliArgs {
@@ -34,6 +41,7 @@ export interface CliArgs {
   database_url?: string;
   role_mappings: Record<string, string>;
   scope?: ExportScope | ExportScope[];
+  clean?: boolean;
   include_date?: boolean;
 }
 
@@ -219,6 +227,7 @@ export function getDefaultConfig(): TablerizerOptions {
     role_mappings: {},
     scope: "all",
     include_date: false, // Default: no date in headers
+    clean: true, // Default: clean output directory before export
   };
 }
 
@@ -236,6 +245,13 @@ export function mergeConfigs(
     database_url: override.database_url || base.database_url,
     role_mappings: { ...base.role_mappings, ...override.role_mappings },
     scope: override.scope || base.scope || "all",
-    include_date: override.include_date !== undefined ? override.include_date : base.include_date ?? false,
+    include_date:
+      override.include_date !== undefined
+        ? override.include_date
+        : base.include_date ?? false,
+    clean:
+      override.clean !== undefined
+        ? override.clean
+        : base.clean ?? true, // Default: clean output directory
   };
 }

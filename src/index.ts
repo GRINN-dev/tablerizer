@@ -105,6 +105,15 @@ export class Tablerizer {
     const exportFunctions = scope.includes("functions");
     const exportMaterializedViews = scope.includes("materialized-views");
 
+    // Clean output directory if requested
+    if (this.options.clean !== false) { // Default: true
+      try {
+        await fs.rm(baseOutputDir, { recursive: true, force: true });
+      } catch (error) {
+        // Directory might not exist, that's ok
+      }
+    }
+
     // Ensure base output directory exists
     await fs.mkdir(baseOutputDir, { recursive: true });
 
@@ -245,8 +254,14 @@ export class Tablerizer {
           }
 
           // Get materialized view grants and indexes
-          const grants = await this.getMaterializedViewGrants(schema, matview.matview_name);
-          const indexes = await this.getMaterializedViewIndexes(schema, matview.matview_name);
+          const grants = await this.getMaterializedViewGrants(
+            schema,
+            matview.matview_name
+          );
+          const indexes = await this.getMaterializedViewIndexes(
+            schema,
+            matview.matview_name
+          );
 
           // Generate SQL content (documentation and grants only)
           const sqlContent = generateMaterializedViewSQL(
@@ -259,7 +274,11 @@ export class Tablerizer {
 
           // Write file
           const fileName = `${matview.matview_name}.sql`;
-          const filePath = path.join(schemaOutputDir, "materialized-views", fileName);
+          const filePath = path.join(
+            schemaOutputDir,
+            "materialized-views",
+            fileName
+          );
           await fs.mkdir(path.dirname(filePath), { recursive: true });
           await fs.writeFile(filePath, sqlContent);
 
@@ -483,12 +502,16 @@ export class Tablerizer {
   /**
    * Get list of materialized views in a schema
    */
-  private async getMaterializedViews(schema: string): Promise<import("./database.js").MaterializedViewInfo[]> {
+  private async getMaterializedViews(
+    schema: string
+  ): Promise<import("./database.js").MaterializedViewInfo[]> {
     if (!this.connection) {
       throw new Error("Not connected to database");
     }
 
-    return await this.connection.query<import("./database.js").MaterializedViewInfo>(
+    return await this.connection.query<
+      import("./database.js").MaterializedViewInfo
+    >(
       `
       SELECT 
         n.nspname as schema_name,
@@ -531,7 +554,10 @@ export class Tablerizer {
   /**
    * Get indexes for a materialized view
    */
-  private async getMaterializedViewIndexes(schema: string, matviewName: string) {
+  private async getMaterializedViewIndexes(
+    schema: string,
+    matviewName: string
+  ) {
     return await this.connection!.query<{
       index_name: string;
       index_definition: string;
