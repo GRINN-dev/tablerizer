@@ -47,7 +47,7 @@ SPELLBOOK (OPTIONS):
   --schemas <list>    🎯 Target schema realms, comma-separated
   --out <directory>   📁 Output sanctum (default: ./tables/)
   --roles <list>      🔐 Filter by magical roles, comma-separated
-  --scope <type>      🎯 Export scope: tables, functions, or all (default: all)
+  --scope <type>      🎯 Export scope: tables, functions, views, materialized-views, or all (default: all)
   --include-date      📅 Include generation date in file headers
   --no-date          🚫 Exclude date from headers (default)
   --help, -h         ❓ Show this magical help
@@ -78,7 +78,7 @@ MAGIC FEATURES:
   🧹 Idempotent Scripts - Safe cleanup and recreation sections
   ⚡ Multi-Schema Export - Organized folder structure
   🔮 Function Export - Export stored procedures and functions with GRANT EXECUTE
-  📊 Flexible Scope - Export tables, functions, or both
+  📊 Flexible Scope - Export tables, functions, views, materialized-views, or all
 
 For more wizardry: https://github.com/your-repo/tablerizer
 `);
@@ -142,10 +142,10 @@ export function parseCliArgs(): Partial<CliArgs> {
         i++;
         break;
       case "--scope":
-        if (next === "tables" || next === "functions" || next === "all") {
+        if (next === "tables" || next === "functions" || next === "views" || next === "materialized-views" || next === "all") {
           result.scope = next;
         } else {
-          console.error("❌ Invalid scope. Must be: tables, functions, or all");
+          console.error("❌ Invalid scope. Must be: tables, functions, views, materialized-views, or all");
           process.exit(1);
         }
         i++;

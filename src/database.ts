@@ -106,6 +106,24 @@ export interface ConstraintInfo {
   check_clause?: string;
 }
 
+export interface ViewInfo {
+  schema_name: string;
+  view_name: string;
+  definition: string;
+  owner: string;
+  comment: string | null;
+  is_updatable: boolean;
+}
+
+export interface MaterializedViewInfo {
+  schema_name: string;
+  matview_name: string;
+  definition: string;
+  owner: string;
+  comment: string | null;
+  is_populated: boolean;
+}
+
 export interface ColumnInfo {
   column_name: string;
   data_type: string;

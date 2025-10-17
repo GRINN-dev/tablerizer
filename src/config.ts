@@ -15,7 +15,7 @@ export interface Config {
   include_date?: boolean;
 }
 
-export type ExportScope = "tables" | "functions" | "all";
+export type ExportScope = "tables" | "functions" | "views" | "materialized-views" | "all";
 
 export interface TablerizerOptions {
   schemas: string[];

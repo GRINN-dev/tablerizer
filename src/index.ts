@@ -11,6 +11,7 @@ import { validateConfig, mergeConfigs, getDefaultConfig } from "./config.js";
 import {
   generateTableSQL,
   generateFunctionSQL,
+  generateMaterializedViewSQL,
   applyRoleMappings,
   type TableData,
 } from "./generators.js";
@@ -21,10 +22,11 @@ export interface ExportResult {
   outputPath: string;
   tableFiles: number;
   functionFiles: number;
+  materializedViewFiles: number;
   files: Array<{
     schema: string;
     name: string;
-    type: "table" | "function";
+    type: "table" | "function" | "materialized-view";
     filePath: string;
     size: number;
   }>;
@@ -95,11 +97,13 @@ export class Tablerizer {
     let totalFiles = 0;
     let tableFiles = 0;
     let functionFiles = 0;
+    let materializedViewFiles = 0;
 
     // Determine what to export based on scope
     const scope = this.normalizeScope(this.options.scope);
     const exportTables = scope.includes("tables");
     const exportFunctions = scope.includes("functions");
+    const exportMaterializedViews = scope.includes("materialized-views");
 
     // Ensure base output directory exists
     await fs.mkdir(baseOutputDir, { recursive: true });
@@ -119,6 +123,10 @@ export class Tablerizer {
       if (exportFunctions) {
         const functions = await this.getFunctions(schema);
         totalItems += functions.length;
+      }
+      if (exportMaterializedViews) {
+        const matviews = await this.getMaterializedViews(schema);
+        totalItems += matviews.length;
       }
 
       // Export tables
@@ -218,6 +226,54 @@ export class Tablerizer {
           functionFiles++;
         }
       }
+
+      // Export materialized views
+      if (exportMaterializedViews) {
+        const matviews = await this.getMaterializedViews(schema);
+
+        for (const matview of matviews) {
+          progressCounter++;
+
+          // Report progress
+          if (progressCallback) {
+            progressCallback({
+              schema,
+              table: matview.matview_name, // Using table field for compatibility
+              progress: progressCounter,
+              total: totalItems,
+            });
+          }
+
+          // Get materialized view grants and indexes
+          const grants = await this.getMaterializedViewGrants(schema, matview.matview_name);
+          const indexes = await this.getMaterializedViewIndexes(schema, matview.matview_name);
+
+          // Generate SQL content (documentation and grants only)
+          const sqlContent = generateMaterializedViewSQL(
+            matview,
+            grants,
+            indexes,
+            this.options.role_mappings,
+            this.options.include_date
+          );
+
+          // Write file
+          const fileName = `${matview.matview_name}.sql`;
+          const filePath = path.join(schemaOutputDir, "materialized-views", fileName);
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, sqlContent);
+
+          files.push({
+            schema,
+            name: matview.matview_name,
+            type: "materialized-view" as any,
+            filePath,
+            size: sqlContent.length,
+          });
+          totalFiles++;
+          materializedViewFiles++;
+        }
+      }
     }
 
     return {
@@ -225,6 +281,7 @@ export class Tablerizer {
       totalFiles,
       tableFiles,
       functionFiles,
+      materializedViewFiles,
       outputPath: path.resolve(baseOutputDir),
       files,
     };
@@ -340,7 +397,7 @@ export class Tablerizer {
    */
   private normalizeScope(scope?: ExportScope | ExportScope[]): ExportScope[] {
     if (!scope || scope === "all") {
-      return ["tables", "functions"];
+      return ["tables", "functions", "views", "materialized-views"];
     }
     if (Array.isArray(scope)) {
       return scope;
@@ -420,6 +477,79 @@ export class Tablerizer {
       ORDER BY p.proname
       `,
       [schema]
+    );
+  }
+
+  /**
+   * Get list of materialized views in a schema
+   */
+  private async getMaterializedViews(schema: string): Promise<import("./database.js").MaterializedViewInfo[]> {
+    if (!this.connection) {
+      throw new Error("Not connected to database");
+    }
+
+    return await this.connection.query<import("./database.js").MaterializedViewInfo>(
+      `
+      SELECT 
+        n.nspname as schema_name,
+        c.relname as matview_name,
+        pg_get_viewdef(c.oid) as definition,
+        r.rolname as owner,
+        obj_description(c.oid, 'pg_class') as comment,
+        c.relispopulated as is_populated
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      JOIN pg_roles r ON r.oid = c.relowner
+      WHERE c.relkind = 'm'  -- materialized views
+        AND n.nspname = $1
+      ORDER BY c.relname
+      `,
+      [schema]
+    );
+  }
+
+  /**
+   * Get grants for a materialized view
+   */
+  private async getMaterializedViewGrants(schema: string, matviewName: string) {
+    const roleFilter = this.options.roles ? `AND grantee = ANY($3)` : "";
+    const params = [schema, matviewName];
+    if (this.options.roles) {
+      params.push(this.options.roles as any);
+    }
+
+    return await this.connection!.query(
+      `
+      SELECT grantor, grantee, privilege_type as privilege, is_grantable::boolean
+      FROM information_schema.table_privileges
+      WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
+      `,
+      params
+    );
+  }
+
+  /**
+   * Get indexes for a materialized view
+   */
+  private async getMaterializedViewIndexes(schema: string, matviewName: string) {
+    return await this.connection!.query<{
+      index_name: string;
+      index_definition: string;
+    }>(
+      `
+      SELECT 
+        i.relname as index_name,
+        pg_get_indexdef(i.oid) as index_definition
+      FROM pg_class i
+      JOIN pg_index ix ON ix.indexrelid = i.oid
+      JOIN pg_class t ON t.oid = ix.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE t.relkind = 'm'  -- materialized views
+        AND n.nspname = $1
+        AND t.relname = $2
+      ORDER BY i.relname
+      `,
+      [schema, matviewName]
     );
   }
 
