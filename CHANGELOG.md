@@ -7,7 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.0] - 2025-10-16
+## [1.4.0] - 2025-01-16
+
+### Added
+
+- 🤫 **Silent Mode** for automation workflows
+
+  - Add `--silent` CLI flag to suppress all output except errors
+  - Add `silent` option to Config, TablerizerOptions, and CliArgs interfaces
+  - Perfect for CI/CD pipelines and automated scripts
+  - Suppresses banner, progress output, and completion summary
+
+- 📊 **Index Comments** in table documentation
+
+  - Add comprehensive index information with comments to table schema documentation
+  - Include index definitions and descriptions for better understanding
+  - Exclude automatically generated primary key indexes for cleaner output
+  - Enhanced table data structure with index metadata
+
+- 🔗 **Schema-Qualified Foreign Key Display**
+  - Automatically display schema-qualified names for cross-schema foreign key references
+  - Enhanced clarity when foreign keys reference tables in different schemas
+  - Same-schema references remain unqualified for cleaner output
+  - Improved constraint query to include foreign table schema information
+
+### Fixed
+
+- 🧹 **Configuration Management** - enhanced configuration interfaces for new features
+- 📋 **Documentation Generation** - improved foreign key and index documentation
+
+## [1.3.0] - 2025-01-16
 
 ### Added
 

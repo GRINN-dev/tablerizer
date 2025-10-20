@@ -53,6 +53,11 @@ export interface TableData {
   }>;
   columns?: ColumnInfo[];
   constraints?: ConstraintInfo[];
+  indexes?: Array<{
+    index_name: string;
+    index_definition: string;
+    comment: string | null;
+  }>;
   comment?: string;
 }
 
@@ -228,10 +233,10 @@ export function generateTriggersSQL(
   }
 
   // Generate SQL for each trigger group (sorted alphabetically by trigger name)
-  const sortedTriggers = Array.from(triggerGroups.values()).sort((a, b) => 
+  const sortedTriggers = Array.from(triggerGroups.values()).sort((a, b) =>
     a.trigger_name.localeCompare(b.trigger_name)
   );
-  
+
   for (const triggerGroup of sortedTriggers) {
     // Escape trigger name if it contains special characters
     const escapedTriggerName =
@@ -293,8 +298,10 @@ export function generatePoliciesSQL(
   }
 
   // Create policies (sorted alphabetically by policy name)
-  const sortedPolicies = policies.sort((a, b) => a.policy.localeCompare(b.policy));
-  
+  const sortedPolicies = policies.sort((a, b) =>
+    a.policy.localeCompare(b.policy)
+  );
+
   for (const policy of sortedPolicies) {
     // Escape policy name if it contains special characters
     const escapedPolicyName =
@@ -346,6 +353,11 @@ export function generateSchemaDocumentation(
   tableName: string,
   columns?: ColumnInfo[],
   constraints?: ConstraintInfo[],
+  indexes?: Array<{
+    index_name: string;
+    index_definition: string;
+    comment: string | null;
+  }>,
   tableComment?: string
 ): string[] {
   const docs: string[] = [];
@@ -417,8 +429,14 @@ export function generateSchemaDocumentation(
     if (foreignKeys.length > 0) {
       docs.push("  FOREIGN KEYS:");
       foreignKeys.forEach((fk) => {
+        // Show schema-qualified name if foreign table is in different schema
+        const targetTable =
+          fk.foreign_table_schema && fk.foreign_table_schema !== schema
+            ? `${fk.foreign_table_schema}.${fk.foreign_table_name}`
+            : fk.foreign_table_name;
+
         docs.push(
-          `  • ${fk.constraint_name}: ${fk.column_name} → ${fk.foreign_table_name}.${fk.foreign_column_name}`
+          `  • ${fk.constraint_name}: ${fk.column_name} → ${targetTable}.${fk.foreign_column_name}`
         );
       });
       docs.push("");
@@ -434,12 +452,12 @@ export function generateSchemaDocumentation(
 
     if (checkConstraints.length > 0) {
       // Filter out system-generated constraints with numeric prefixes
-      const userConstraints = checkConstraints.filter(cc => {
+      const userConstraints = checkConstraints.filter((cc) => {
         // Skip constraints that start with numbers (system-generated)
         // Pattern: digit_digit_digit_constraint_type
         return !/^\d+_\d+_\d+_.+/.test(cc.constraint_name);
       });
-      
+
       if (userConstraints.length > 0) {
         docs.push("  CHECK CONSTRAINTS:");
         userConstraints.forEach((cc) => {
@@ -448,6 +466,22 @@ export function generateSchemaDocumentation(
         docs.push("");
       }
     }
+  }
+
+  // Add indexes section
+  if (indexes && indexes.length > 0) {
+    docs.push("  INDEXES:");
+    docs.push("  --------");
+
+    for (const idx of indexes) {
+      let indexDoc = `  • ${idx.index_name}`;
+      if (idx.comment) {
+        indexDoc += ` -- ${idx.comment}`;
+      }
+      docs.push(indexDoc);
+      docs.push(`    ${idx.index_definition}`);
+    }
+    docs.push("");
   }
 
   docs.push("*/");
@@ -611,6 +645,7 @@ export function generateTableSQL(
     tableName,
     tableData.columns,
     tableData.constraints,
+    tableData.indexes,
     tableData.comment
   );
   sections.push(...schemaDoc);

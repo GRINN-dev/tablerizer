@@ -101,6 +101,7 @@ export interface ConstraintInfo {
   constraint_type: string;
   table_name: string;
   column_name?: string;
+  foreign_table_schema?: string;
   foreign_table_name?: string;
   foreign_column_name?: string;
   check_clause?: string;

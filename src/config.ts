@@ -14,6 +14,7 @@ export interface Config {
   scope?: ExportScope | ExportScope[];
   include_date?: boolean;
   clean?: boolean;
+  silent?: boolean;
 }
 
 export type ExportScope =
@@ -32,6 +33,7 @@ export interface TablerizerOptions {
   scope?: ExportScope | ExportScope[];
   include_date?: boolean;
   clean?: boolean;
+  silent?: boolean;
 }
 
 export interface CliArgs {
@@ -43,6 +45,7 @@ export interface CliArgs {
   scope?: ExportScope | ExportScope[];
   clean?: boolean;
   include_date?: boolean;
+  silent?: boolean;
 }
 
 /**
@@ -228,6 +231,7 @@ export function getDefaultConfig(): TablerizerOptions {
     scope: "all",
     include_date: false, // Default: no date in headers
     clean: true, // Default: clean output directory before export
+    silent: false, // Default: verbose output
   };
 }
 
@@ -249,9 +253,8 @@ export function mergeConfigs(
       override.include_date !== undefined
         ? override.include_date
         : base.include_date ?? false,
-    clean:
-      override.clean !== undefined
-        ? override.clean
-        : base.clean ?? true, // Default: clean output directory
+    clean: override.clean !== undefined ? override.clean : base.clean ?? true, // Default: clean output directory
+    silent:
+      override.silent !== undefined ? override.silent : base.silent ?? false, // Default: verbose output
   };
 }

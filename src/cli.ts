@@ -5,7 +5,7 @@
 import type { CliArgs } from "./config.js";
 
 const TOOL_NAME = "tablerizer";
-const VERSION = "1.3.0";
+const VERSION = "1.4.0";
 
 // ASCII Art for the tool
 const ASCII_ART = `
@@ -52,6 +52,7 @@ SPELLBOOK (OPTIONS):
   --no-date          🚫 Exclude date from headers (default)
   --clean            🧹 Clean output directory before export (default)
   --no-clean         🚫 Keep existing files in output directory
+  --silent           🤫 Silent mode - suppress output for automation
   --help, -h         ❓ Show this magical help
   --version, -v      ℹ️  Show version of the wizard
 
@@ -64,6 +65,7 @@ CONFIGURATION SCROLLS:
     "database_url": "postgres://user:pass@host:5432/db",
     "scope": "all",
     "clean": true,
+    "silent": false,
     "role_mappings": {
       "actual_role": ":PLACEHOLDER_ROLE"
     }
@@ -172,6 +174,9 @@ export function parseCliArgs(): Partial<CliArgs> {
         break;
       case "--no-clean":
         result.clean = false;
+        break;
+      case "--silent":
+        result.silent = true;
         break;
       case "--config":
         // Config file path is handled separately
@@ -301,9 +306,6 @@ export async function runCLI(): Promise<void> {
   const { resolveConfig } = await import("./config.js");
 
   try {
-    // Show banner
-    showBanner();
-
     // Parse CLI args
     const cliArgs = parseCliArgs();
     const configPath = getConfigPath();
@@ -311,38 +313,51 @@ export async function runCLI(): Promise<void> {
     // Resolve configuration
     const config = await resolveConfig(cliArgs, configPath);
 
+    // Show banner only if not in silent mode
+    if (!config.silent) {
+      showBanner();
+    }
+
     // Display configuration summary
-    displayConfigSummary(config);
-    displayConnectionStatus(true);
+    if (!config.silent) {
+      displayConfigSummary(config);
+      displayConnectionStatus(true);
+    }
 
     // Create and run tablerizer
     const tablerizer = new Tablerizer(config);
     await tablerizer.connect();
 
-    displayConnectionStatus(false);
-    displayProcessingStatus();
+    if (!config.silent) {
+      displayConnectionStatus(false);
+      displayProcessingStatus();
+    }
 
     let progressCounter = 0;
 
     const result = await tablerizer.export((progress) => {
       progressCounter++;
       const percentage = Math.round((progress.progress / progress.total) * 100);
-      console.log(
-        `    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${percentage}%)`
-      );
+      if (!config.silent) {
+        console.log(
+          `    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${percentage}%)`
+        );
+      }
     });
 
     await tablerizer.disconnect();
 
     // Display completion summary
-    displayCompletionSummary({
-      schemas: result.schemas,
-      totalFiles: result.totalFiles,
-      tableFiles: result.tableFiles,
-      functionFiles: result.functionFiles,
-      outputPath: result.outputPath,
-      roleMappings: config.role_mappings,
-    });
+    if (!config.silent) {
+      displayCompletionSummary({
+        schemas: result.schemas,
+        totalFiles: result.totalFiles,
+        tableFiles: result.tableFiles,
+        functionFiles: result.functionFiles,
+        outputPath: result.outputPath,
+        roleMappings: config.role_mappings,
+      });
+    }
   } catch (error) {
     if (error instanceof Error) {
       displayError(error.message);

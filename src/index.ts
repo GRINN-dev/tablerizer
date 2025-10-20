@@ -42,6 +42,15 @@ export interface ExportProgress {
 export type ProgressCallback = (progress: ExportProgress) => void;
 
 /**
+ * Utility function for conditional logging
+ */
+function conditionalLog(message: string, silent: boolean): void {
+  if (!silent) {
+    console.log(message);
+  }
+}
+
+/**
  * Main Tablerizer class for exporting PostgreSQL table permissions and schemas
  */
 export class Tablerizer {
@@ -106,7 +115,8 @@ export class Tablerizer {
     const exportMaterializedViews = scope.includes("materialized-views");
 
     // Clean output directory if requested
-    if (this.options.clean !== false) { // Default: true
+    if (this.options.clean !== false) {
+      // Default: true
       try {
         await fs.rm(baseOutputDir, { recursive: true, force: true });
       } catch (error) {
@@ -580,6 +590,38 @@ export class Tablerizer {
   }
 
   /**
+   * Get indexes for a table with comments
+   */
+  private async getTableIndexes(schema: string, tableName: string) {
+    return await this.connection!.query<{
+      index_name: string;
+      index_definition: string;
+      comment: string | null;
+    }>(
+      `
+      SELECT 
+        i.relname as index_name,
+        pg_get_indexdef(i.oid) as index_definition,
+        obj_description(i.oid, 'pg_class') as comment
+      FROM pg_class i
+      JOIN pg_index ix ON ix.indexrelid = i.oid
+      JOIN pg_class t ON t.oid = ix.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE (t.relkind = 'r' OR t.relkind = 'p')  -- regular and partitioned tables
+        AND n.nspname = $1
+        AND t.relname = $2
+        -- Exclude primary key indexes created automatically by constraints
+        AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint c 
+          WHERE c.conindid = i.oid AND c.contype = 'p'
+        )
+      ORDER BY i.relname
+      `,
+      [schema, tableName]
+    );
+  }
+
+  /**
    * Get comprehensive table data including RBAC, RLS, triggers, constraints, etc.
    */
   private async getTableData(
@@ -632,6 +674,9 @@ export class Tablerizer {
     // Get constraints
     const constraints = await this.getConstraints(schema, tableName);
 
+    // Get indexes
+    const indexes = await this.getTableIndexes(schema, tableName);
+
     // Get table comment
     const tableComment = await this.getTableComment(schema, tableName);
 
@@ -650,6 +695,7 @@ export class Tablerizer {
       triggers,
       columns,
       constraints,
+      indexes,
       comment: tableComment,
     };
   }
@@ -757,6 +803,7 @@ export class Tablerizer {
         tc.constraint_name,
         tc.constraint_type,
         kcu.column_name,
+        ccu.table_schema as foreign_table_schema,
         ccu.table_name as foreign_table_name,
         ccu.column_name as foreign_column_name,
         cc.check_clause
