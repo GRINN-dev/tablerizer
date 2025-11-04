@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2025-11-04
+
+### Fixed
+
+- 🎯 **Comprehensive Deterministic Output** - eliminates all sources of non-deterministic behavior
+  - Sort table grants by grantee then privilege for consistent GRANT statements
+  - Sort materialized view grants by grantee then privilege
+  - Sort function execution grants by role name alphabetically
+  - Sort trigger names alphabetically in DROP TRIGGER statements (cleanup section)
+  - Sort grantees alphabetically in REVOKE ALL statements (cleanup section)
+  - Sort constraints by name before categorization in documentation
+  - Sort indexes by name in both table and materialized view documentation
+  - Sort permissions by privilege then grantee in materialized view documentation
+  - Ensures 100% repeatable outputs for CI/CD workflows and version control
+
+## [1.4.1] - 2025-11-04
+
+### Fixed
+
+- 🔄 **Deterministic Column Grant Output** - ensures repeatable results
+  - Sort column names alphabetically in column-level GRANT statements
+  - Add ORDER BY clauses to column_privileges and table_privileges queries
+  - Guarantees consistent output order across multiple exports
+  - Critical for CI/CD workflows and version control comparisons
+
 ## [1.4.0] - 2025-01-16
 
 ### Added

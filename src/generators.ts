@@ -107,7 +107,15 @@ export function generateGrantsSQL(
 ): string[] {
   const sqlStatements: string[] = [];
 
-  for (const grant of grants) {
+  // Sort grants for deterministic output
+  const sortedGrants = grants.sort((a, b) => {
+    // Sort by grantee first, then by privilege
+    const granteeCompare = a.grantee.localeCompare(b.grantee);
+    if (granteeCompare !== 0) return granteeCompare;
+    return a.privilege.localeCompare(b.privilege);
+  });
+
+  for (const grant of sortedGrants) {
     // Escape identifiers if they contain special characters
     const escapedGrantee =
       grant.grantee.includes(" ") || grant.grantee.includes("-")
@@ -161,7 +169,9 @@ export function generateColumnGrantsSQL(
     const escapedGrantee =
       grantee.includes(" ") || grantee.includes("-") ? `"${grantee}"` : grantee;
 
-    const escapedColumns = Array.from(columns).map((col) =>
+    // Sort columns alphabetically for consistent output
+    const sortedColumns = Array.from(columns).sort();
+    const escapedColumns = sortedColumns.map((col) =>
       col.includes(" ") || col.includes("-") ? `"${col}"` : col
     );
 
@@ -405,16 +415,21 @@ export function generateSchemaDocumentation(
   }
 
   if (constraints && constraints.length > 0) {
-    const primaryKeys = constraints.filter(
+    // Sort constraints by name for deterministic output
+    const sortedConstraints = [...constraints].sort((a, b) =>
+      a.constraint_name.localeCompare(b.constraint_name)
+    );
+
+    const primaryKeys = sortedConstraints.filter(
       (c) => c.constraint_type === "PRIMARY KEY"
     );
-    const foreignKeys = constraints.filter(
+    const foreignKeys = sortedConstraints.filter(
       (c) => c.constraint_type === "FOREIGN KEY"
     );
-    const uniqueKeys = constraints.filter(
+    const uniqueKeys = sortedConstraints.filter(
       (c) => c.constraint_type === "UNIQUE"
     );
-    const checkConstraints = constraints.filter(
+    const checkConstraints = sortedConstraints.filter(
       (c) => c.constraint_type === "CHECK"
     );
 
@@ -473,7 +488,12 @@ export function generateSchemaDocumentation(
     docs.push("  INDEXES:");
     docs.push("  --------");
 
-    for (const idx of indexes) {
+    // Sort indexes by name for deterministic output
+    const sortedIndexes = [...indexes].sort((a, b) =>
+      a.index_name.localeCompare(b.index_name)
+    );
+
+    for (const idx of sortedIndexes) {
       let indexDoc = `  • ${idx.index_name}`;
       if (idx.comment) {
         indexDoc += ` -- ${idx.comment}`;
@@ -536,7 +556,9 @@ export function generateTableSQL(
     const uniqueTriggerNames = new Set(
       tableData.triggers.map((t) => t.trigger_name)
     );
-    for (const triggerName of uniqueTriggerNames) {
+    // Sort trigger names for deterministic output
+    const sortedTriggerNames = Array.from(uniqueTriggerNames).sort();
+    for (const triggerName of sortedTriggerNames) {
       const escapedTriggerName =
         triggerName.includes(" ") || triggerName.includes("-")
           ? `"${triggerName}"`
@@ -555,7 +577,7 @@ export function generateTableSQL(
   ) {
     sections.push("-- Revoke existing grants");
 
-    // Get unique grantees
+    // Get unique grantees and sort them
     const tableGrantees = new Set(
       tableData.rbac.table_grants.map((g) => g.grantee)
     );
@@ -563,8 +585,9 @@ export function generateTableSQL(
       tableData.rbac.column_grants.map((g) => g.grantee)
     );
     const allGrantees = new Set([...tableGrantees, ...columnGrantees]);
+    const sortedGrantees = Array.from(allGrantees).sort();
 
-    for (const grantee of allGrantees) {
+    for (const grantee of sortedGrantees) {
       const escapedGrantee =
         grantee.includes(" ") || grantee.includes("-")
           ? `"${grantee}"`
@@ -708,7 +731,9 @@ export function generateFunctionSQL(
   if (roles && roles.length > 0) {
     lines.push("");
     lines.push("-- Grant execution permissions");
-    for (const role of roles) {
+    // Sort roles for deterministic output
+    const sortedRoles = [...roles].sort();
+    for (const role of sortedRoles) {
       // Escape role name if it contains special characters
       const escapedRole =
         role.includes(" ") || role.includes("-") ? `"${role}"` : role;
@@ -787,7 +812,11 @@ export function generateMaterializedViewSQL(
   if (indexes.length > 0) {
     lines.push("  INDEXES:");
     lines.push("  --------");
-    for (const idx of indexes) {
+    // Sort indexes by name for deterministic output
+    const sortedIndexes = [...indexes].sort((a, b) =>
+      a.index_name.localeCompare(b.index_name)
+    );
+    for (const idx of sortedIndexes) {
       lines.push(`  • ${idx.index_name}`);
       lines.push(`    ${idx.index_definition}`);
     }
@@ -798,7 +827,13 @@ export function generateMaterializedViewSQL(
   if (grants.length > 0) {
     lines.push("  PERMISSIONS:");
     lines.push("  ------------");
-    for (const grant of grants) {
+    // Sort grants by privilege then grantee for deterministic output
+    const sortedGrants = [...grants].sort((a, b) => {
+      const privilegeCompare = a.privilege.localeCompare(b.privilege);
+      if (privilegeCompare !== 0) return privilegeCompare;
+      return a.grantee.localeCompare(b.grantee);
+    });
+    for (const grant of sortedGrants) {
       const grantableText = grant.is_grantable ? " (GRANTABLE)" : "";
       lines.push(`  • ${grant.privilege} → ${grant.grantee}${grantableText}`);
     }
@@ -818,8 +853,10 @@ export function generateMaterializedViewSQL(
 
   // Revoke existing grants
   if (grants.length > 0) {
+    // Sort grantees for deterministic output
     const grantees = new Set(grants.map((g) => g.grantee));
-    for (const grantee of grantees) {
+    const sortedGrantees = Array.from(grantees).sort();
+    for (const grantee of sortedGrantees) {
       const escapedGrantee =
         grantee.includes(" ") || grantee.includes("-")
           ? `"${grantee}"`
@@ -839,7 +876,13 @@ export function generateMaterializedViewSQL(
   // Generate grants
   if (grants.length > 0) {
     lines.push("-- Materialized view grants");
-    for (const grant of grants) {
+    // Sort grants for deterministic output (already sorted by query but sort here too for safety)
+    const sortedGrants = [...grants].sort((a, b) => {
+      const granteeCompare = a.grantee.localeCompare(b.grantee);
+      if (granteeCompare !== 0) return granteeCompare;
+      return a.privilege.localeCompare(b.privilege);
+    });
+    for (const grant of sortedGrants) {
       const escapedGrantee =
         grant.grantee.includes(" ") || grant.grantee.includes("-")
           ? `"${grant.grantee}"`

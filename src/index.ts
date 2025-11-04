@@ -556,6 +556,7 @@ export class Tablerizer {
       SELECT grantor, grantee, privilege_type as privilege, is_grantable::boolean
       FROM information_schema.table_privileges
       WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
+      ORDER BY grantee, privilege_type
       `,
       params
     );
@@ -712,6 +713,7 @@ export class Tablerizer {
       SELECT grantor, grantee, privilege_type as privilege, is_grantable::boolean
       FROM information_schema.table_privileges
       WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
+      ORDER BY grantee, privilege_type
       `,
       params
     );
@@ -729,6 +731,7 @@ export class Tablerizer {
       SELECT column_name, grantor, grantee, privilege_type as privilege, is_grantable::boolean
       FROM information_schema.column_privileges
       WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
+      ORDER BY column_name, grantee, privilege_type
       `,
       params
     );
@@ -749,6 +752,7 @@ export class Tablerizer {
         with_check
       FROM pg_policies
       WHERE schemaname = $1 AND tablename = $2
+      ORDER BY policyname
       `,
       [schema, tableName]
     );
