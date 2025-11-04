@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.4] - 2025-11-04
+
+### Fixed
+
+- 🔄 **Column Grant Operation Sorting** - fixes missing deterministic sorting for operation types
+  - Sort column grants by grantee, then privilege/operation type (INSERT, SELECT, UPDATE), then grantable status
+  - Ensures consistent ordering: INSERT before SELECT before UPDATE for same grantee
+  - Eliminates remaining non-deterministic behavior in column-level GRANT statements
+  - Critical fix for complete deterministic output in CI/CD workflows
+
+## [1.4.3] - 2025-11-04
+
+### Fixed
+
+- 🎯 **Comprehensive Deterministic Output** - eliminates all sources of non-deterministic behavior (initial release)
+
 ## [1.4.2] - 2025-11-04
 
 ### Fixed

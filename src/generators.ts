@@ -160,8 +160,27 @@ export function generateColumnGrantsSQL(
     grantsByGranteeAndPrivilege.get(key)!.add(grant.column_name);
   }
 
+  // Sort entries by grantee, then privilege, then grantable for deterministic output
+  const sortedEntries = Array.from(grantsByGranteeAndPrivilege.entries()).sort(
+    (a, b) => {
+      const [granteeA, privilegeA, grantableA] = a[0].split(":");
+      const [granteeB, privilegeB, grantableB] = b[0].split(":");
+
+      // Sort by grantee first
+      const granteeCompare = granteeA.localeCompare(granteeB);
+      if (granteeCompare !== 0) return granteeCompare;
+
+      // Then by privilege (operation type)
+      const privilegeCompare = privilegeA.localeCompare(privilegeB);
+      if (privilegeCompare !== 0) return privilegeCompare;
+
+      // Finally by grantable status
+      return grantableA.localeCompare(grantableB);
+    }
+  );
+
   // Generate GRANT statements
-  for (const [key, columns] of grantsByGranteeAndPrivilege) {
+  for (const [key, columns] of sortedEntries) {
     const [grantee, privilege, isGrantableStr] = key.split(":");
     const isGrantable = isGrantableStr === "true";
 

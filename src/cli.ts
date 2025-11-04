@@ -5,7 +5,7 @@
 import type { CliArgs } from "./config.js";
 
 const TOOL_NAME = "tablerizer";
-const VERSION = "1.4.2";
+const VERSION = "1.4.4";
 
 // ASCII Art for the tool
 const ASCII_ART = `
