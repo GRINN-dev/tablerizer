@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.5] - 2025-11-05
+
+### Fixed
+
+- 🔑 **Constraint Column Ordering** - fixes non-deterministic ordering in multi-column constraints
+  - Group constraint columns by constraint name for PRIMARY KEY, UNIQUE, and FOREIGN KEY constraints
+  - Sort column names alphabetically within each constraint (e.g., `id, name` instead of random order)
+  - Sort constraint names alphabetically for consistent documentation order
+  - Handles composite keys and multi-column constraints properly
+  - Eliminates remaining non-deterministic behavior in schema documentation
+
 ## [1.4.4] - 2025-11-04
 
 ### Fixed
