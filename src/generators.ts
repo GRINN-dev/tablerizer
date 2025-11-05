@@ -464,12 +464,12 @@ export function generateSchemaDocumentation(
           pkGroups.get(pk.constraint_name)!.push(pk.column_name);
         }
       });
-      
+
       // Sort constraint names, then sort columns within each constraint
-      const sortedPkConstraints = Array.from(pkGroups.entries()).sort((a, b) => 
+      const sortedPkConstraints = Array.from(pkGroups.entries()).sort((a, b) =>
         a[0].localeCompare(b[0])
       );
-      
+
       sortedPkConstraints.forEach(([constraintName, columns]) => {
         const sortedColumns = columns.sort();
         docs.push(`  • ${constraintName}: ${sortedColumns.join(", ")}`);
@@ -480,20 +480,23 @@ export function generateSchemaDocumentation(
     if (foreignKeys.length > 0) {
       docs.push("  FOREIGN KEYS:");
       // Group foreign key columns by constraint name
-      const fkGroups = new Map<string, {
-        columns: string[], 
-        targetSchema: string | undefined,
-        targetTable: string | undefined,
-        targetColumns: string[]
-      }>();
-      
+      const fkGroups = new Map<
+        string,
+        {
+          columns: string[];
+          targetSchema: string | undefined;
+          targetTable: string | undefined;
+          targetColumns: string[];
+        }
+      >();
+
       foreignKeys.forEach((fk) => {
         if (!fkGroups.has(fk.constraint_name)) {
           fkGroups.set(fk.constraint_name, {
             columns: [],
             targetSchema: fk.foreign_table_schema,
             targetTable: fk.foreign_table_name,
-            targetColumns: []
+            targetColumns: [],
           });
         }
         const group = fkGroups.get(fk.constraint_name)!;
@@ -504,23 +507,26 @@ export function generateSchemaDocumentation(
           group.targetColumns.push(fk.foreign_column_name);
         }
       });
-      
+
       // Sort constraint names, then sort columns within each constraint
-      const sortedFkConstraints = Array.from(fkGroups.entries()).sort((a, b) => 
+      const sortedFkConstraints = Array.from(fkGroups.entries()).sort((a, b) =>
         a[0].localeCompare(b[0])
       );
-      
+
       sortedFkConstraints.forEach(([constraintName, group]) => {
         const sortedColumns = group.columns.sort();
         const sortedTargetColumns = group.targetColumns.sort();
-        
+
         // Show schema-qualified name if foreign table is in different schema
-        const targetTable = group.targetSchema && group.targetSchema !== schema
-          ? `${group.targetSchema}.${group.targetTable}`
-          : group.targetTable;
+        const targetTable =
+          group.targetSchema && group.targetSchema !== schema
+            ? `${group.targetSchema}.${group.targetTable}`
+            : group.targetTable;
 
         docs.push(
-          `  • ${constraintName}: ${sortedColumns.join(", ")} → ${targetTable}.${sortedTargetColumns.join(", ")}`
+          `  • ${constraintName}: ${sortedColumns.join(
+            ", "
+          )} → ${targetTable}.${sortedTargetColumns.join(", ")}`
         );
       });
       docs.push("");
@@ -538,12 +544,12 @@ export function generateSchemaDocumentation(
           ukGroups.get(uk.constraint_name)!.push(uk.column_name);
         }
       });
-      
+
       // Sort constraint names, then sort columns within each constraint
-      const sortedUkConstraints = Array.from(ukGroups.entries()).sort((a, b) => 
+      const sortedUkConstraints = Array.from(ukGroups.entries()).sort((a, b) =>
         a[0].localeCompare(b[0])
       );
-      
+
       sortedUkConstraints.forEach(([constraintName, columns]) => {
         const sortedColumns = columns.sort();
         docs.push(`  • ${constraintName}: ${sortedColumns.join(", ")}`);
