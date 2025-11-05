@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.6] - 2025-11-05
+
+### Fixed
+
+- 🤫 **Enhanced Silent Mode** - improves automation-friendly output
+  - Silent mode now shows minimal essential information instead of complete silence
+  - Displays concise connection status, processing updates, and completion summary
+  - Perfect balance between automation needs and basic monitoring
+  - Format: "Exporting schema1,schema2 to ./exports" → "Processing..." → "Complete: 15 files exported to ./exports"
+
 ## [1.4.5] - 2025-11-05
 
 ### Fixed

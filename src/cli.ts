@@ -5,7 +5,7 @@
 import type { CliArgs } from "./config.js";
 
 const TOOL_NAME = "tablerizer";
-const VERSION = "1.4.5";
+const VERSION = "1.4.6";
 
 // ASCII Art for the tool
 const ASCII_ART = `
@@ -52,7 +52,7 @@ SPELLBOOK (OPTIONS):
   --no-date          🚫 Exclude date from headers (default)
   --clean            🧹 Clean output directory before export (default)
   --no-clean         🚫 Keep existing files in output directory
-  --silent           🤫 Silent mode - suppress output for automation
+  --silent           🤫 Silent mode - minimal output for automation
   --help, -h         ❓ Show this magical help
   --version, -v      ℹ️  Show version of the wizard
 
@@ -211,7 +211,16 @@ export function displayConfigSummary(config: {
   roles?: string[];
   role_mappings?: Record<string, string>;
   scope?: string | string[];
+  silent?: boolean;
 }): void {
+  if (config.silent) {
+    // Minimal output in silent mode
+    console.log(
+      `Exporting ${config.schemas.join(",")} to ${config.out || "./tables"}`
+    );
+    return;
+  }
+
   console.log(`📂 Conjuring files in: ${config.out || "./tables"}`);
   console.log(`🎯 Target schemas: ${config.schemas.join(", ")}`);
   console.log(
@@ -246,7 +255,16 @@ export function displayCompletionSummary(summary: {
   functionFiles?: number;
   outputPath: string;
   roleMappings?: Record<string, string>;
+  silent?: boolean;
 }): void {
+  if (summary.silent) {
+    // Minimal output in silent mode
+    console.log(
+      `Complete: ${summary.totalFiles} files exported to ${summary.outputPath}`
+    );
+    return;
+  }
+
   console.log(`🏆 Export wizard complete!`);
   console.log(`📊 Summary:`);
   console.log(`   • Schemas processed: ${summary.schemas.length}`);
@@ -282,19 +300,38 @@ export function displayError(message: string): void {
 /**
  * Display connection status
  */
-export function displayConnectionStatus(connecting: boolean): void {
+export function displayConnectionStatus(
+  connecting: boolean,
+  silent?: boolean
+): void {
+  if (silent) {
+    // Minimal output in silent mode
+    if (connecting) {
+      console.log(`Connecting...`);
+    } else {
+      console.log(`Connected.`);
+    }
+    return;
+  }
+
   if (connecting) {
     console.log(`🔮 Connecting to database...`);
   } else {
-    console.log(`✨ Connected successfully! The magic begins...\\n`);
+    console.log(`✨ Connected successfully! The magic begins...\n`);
   }
 }
 
 /**
  * Display processing status
  */
-export function displayProcessingStatus(): void {
-  console.log(`\\n🚀 The table export wizard is working...\\n`);
+export function displayProcessingStatus(silent?: boolean): void {
+  if (silent) {
+    // Minimal output in silent mode
+    console.log(`Processing...`);
+    return;
+  }
+
+  console.log(`\n🚀 The table export wizard is working...\n`);
 }
 
 /**
@@ -319,19 +356,15 @@ export async function runCLI(): Promise<void> {
     }
 
     // Display configuration summary
-    if (!config.silent) {
-      displayConfigSummary(config);
-      displayConnectionStatus(true);
-    }
+    displayConfigSummary(config);
+    displayConnectionStatus(true, config.silent);
 
     // Create and run tablerizer
     const tablerizer = new Tablerizer(config);
     await tablerizer.connect();
 
-    if (!config.silent) {
-      displayConnectionStatus(false);
-      displayProcessingStatus();
-    }
+    displayConnectionStatus(false, config.silent);
+    displayProcessingStatus(config.silent);
 
     let progressCounter = 0;
 
@@ -348,16 +381,15 @@ export async function runCLI(): Promise<void> {
     await tablerizer.disconnect();
 
     // Display completion summary
-    if (!config.silent) {
-      displayCompletionSummary({
-        schemas: result.schemas,
-        totalFiles: result.totalFiles,
-        tableFiles: result.tableFiles,
-        functionFiles: result.functionFiles,
-        outputPath: result.outputPath,
-        roleMappings: config.role_mappings,
-      });
-    }
+    displayCompletionSummary({
+      schemas: result.schemas,
+      totalFiles: result.totalFiles,
+      tableFiles: result.tableFiles,
+      functionFiles: result.functionFiles,
+      outputPath: result.outputPath,
+      roleMappings: config.role_mappings,
+      silent: config.silent,
+    });
   } catch (error) {
     if (error instanceof Error) {
       displayError(error.message);
