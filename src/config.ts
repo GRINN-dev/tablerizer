@@ -88,20 +88,31 @@ function expandEnvVars(value: string): string {
 
 /**
  * Recursively expand environment variables in config object
+ * Special handling for role_mappings to expand variables in keys
  */
-function expandConfigEnvVars(obj: any): any {
+function expandConfigEnvVars(obj: any, parentKey?: string): any {
   if (typeof obj === "string") {
     return expandEnvVars(obj);
   }
 
   if (Array.isArray(obj)) {
-    return obj.map(expandConfigEnvVars);
+    return obj.map(item => expandConfigEnvVars(item));
   }
 
   if (obj && typeof obj === "object") {
     const expanded: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      expanded[key] = expandConfigEnvVars(value);
+    
+    // Special handling for role_mappings: expand env vars in both keys and values
+    if (parentKey === "role_mappings") {
+      for (const [key, value] of Object.entries(obj)) {
+        const expandedKey = expandEnvVars(key);
+        const expandedValue = expandConfigEnvVars(value);
+        expanded[expandedKey] = expandedValue;
+      }
+    } else {
+      for (const [key, value] of Object.entries(obj)) {
+        expanded[key] = expandConfigEnvVars(value, key);
+      }
     }
     return expanded;
   }

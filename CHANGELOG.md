@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2025-11-13
+
+### Added
+
+- 🌍 **Environment Variables in Role Mapping Keys** - powerful configuration flexibility
+  - Support `$VAR` syntax in `role_mappings` keys for dynamic role configuration
+  - Example: `"$DATABASE_VISITOR": ":DATABASE_VISITOR"` expands from environment
+  - Enables environment-specific role configurations without code changes
+  - Perfect for multi-environment deployments (dev, staging, prod)
+  - Works with existing `${VAR}` and `${VAR:default}` syntax
+
+### Fixed
+
+- 🔧 **Deterministic Role Headers in Function Exports** - fixes non-deterministic output
+  - Apply role mappings to roles in function file headers
+  - Header now shows: `-- Grants for roles: :DATABASE_VISITOR, :DATABASE_AUTHENTICATOR`
+  - Previously showed unmapped role names causing non-deterministic output
+  - Ensures consistent headers across exports for CI/CD workflows
+
 ## [1.4.6] - 2025-11-05
 
 ### Fixed

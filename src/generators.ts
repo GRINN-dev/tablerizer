@@ -799,7 +799,11 @@ export function generateFunctionSQL(
     lines.push(`-- Comment: ${func.comment}`);
   }
   if (roles && roles.length > 0) {
-    lines.push(`-- Grants for roles: ${roles.join(", ")}`);
+    // Apply role mappings to roles in header for deterministic output
+    const displayRoles = roleMappings && Object.keys(roleMappings).length > 0
+      ? roles.map(role => roleMappings[role] || role)
+      : roles;
+    lines.push(`-- Grants for roles: ${displayRoles.join(", ")}`);
   }
   lines.push("");
 

@@ -31,11 +31,46 @@ Create a `config.json` file with the following structure:
 
 The `role_mappings` feature allows you to replace actual database role names with placeholders in the generated SQL files. This is perfect for use with tools like Graphile Migrate where you want to use placeholders that get replaced during deployment.
 
-**Example:**
+**Basic Example:**
 
 - Database has role: `my_app_visitor`
 - Config maps: `"my_app_visitor": ":DATABASE_VISITOR"`
 - Generated SQL will contain: `GRANT SELECT TO :DATABASE_VISITOR`
+
+**🌍 Environment Variables in Keys (v1.5.0+)**
+
+You can now use environment variables in role mapping **keys** for dynamic, environment-specific configurations:
+
+```json
+{
+  "role_mappings": {
+    "$DATABASE_VISITOR": ":DATABASE_VISITOR",
+    "$DATABASE_AUTHENTICATOR": ":DATABASE_AUTHENTICATOR"
+  }
+}
+```
+
+With environment variables set:
+```bash
+export DATABASE_VISITOR="cap_commun_azimuth_visitor"
+export DATABASE_AUTHENTICATOR="cap_commun_azimuth_authenticator"
+```
+
+This expands to:
+```json
+{
+  "role_mappings": {
+    "cap_commun_azimuth_visitor": ":DATABASE_VISITOR",
+    "cap_commun_azimuth_authenticator": ":DATABASE_AUTHENTICATOR"
+  }
+}
+```
+
+**Benefits:**
+- Single config file for all environments
+- Role names from environment-specific variables
+- Perfect for Docker/Kubernetes deployments
+- Reduces configuration duplication
 
 ## Usage Examples
 
