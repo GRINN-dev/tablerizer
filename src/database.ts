@@ -107,6 +107,44 @@ export interface ConstraintInfo {
   check_clause?: string;
 }
 
+/**
+ * Column definition from pg_catalog (pg_dump-style exact types)
+ */
+export interface ColumnDefinition {
+  column_name: string;
+  data_type: string;
+  not_null: boolean;
+  column_default: string | null;
+  comment: string | null;
+  ordinal_position: number;
+}
+
+/**
+ * Constraint definition from pg_catalog (exact definition via pg_get_constraintdef)
+ */
+export interface ConstraintDefinition {
+  constraint_name: string;
+  constraint_type: string; // 'p' = PK, 'u' = UNIQUE, 'f' = FK, 'c' = CHECK, 'x' = EXCLUSION
+  definition: string;
+}
+
+/**
+ * Index definition from pg_catalog
+ */
+export interface IndexDefinition {
+  index_name: string;
+  index_definition: string;
+  comment: string | null;
+}
+
+/**
+ * Table partition info
+ */
+export interface PartitionInfo {
+  partition_strategy: string; // 'r' = range, 'l' = list, 'h' = hash
+  partition_key: string;
+}
+
 export interface ViewInfo {
   schema_name: string;
   view_name: string;

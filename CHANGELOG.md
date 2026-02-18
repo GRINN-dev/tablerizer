@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-02-18
+
+### BREAKING CHANGES
+
+- **Complete DDL Export** - Table export now generates full, executable DDL instead of permissions-only SQL
+  - Each table file now includes `DROP TABLE IF EXISTS ... CASCADE` + `CREATE TABLE` with exact column definitions
+  - Column definitions sourced from `pg_catalog` (pg_dump-style exact types: `integer`, `text[]`, `timestamp with time zone`, etc.)
+  - Constraints exported as idempotent `ALTER TABLE DROP CONSTRAINT IF EXISTS` + `ALTER TABLE ADD CONSTRAINT` (PK, UNIQUE, FK, CHECK, EXCLUSION)
+  - Indexes exported as idempotent `DROP INDEX IF EXISTS` + `CREATE INDEX`
+  - Table/column/index comments exported as `COMMENT ON TABLE/COLUMN/INDEX` statements
+  - Table ownership exported as `ALTER TABLE ... OWNER TO` (with role mapping support)
+  - Partition strategy (`PARTITION BY RANGE/LIST/HASH`) included for partitioned tables
+  - The documentation block (`/* TABLE SCHEMA DOCUMENTATION */`) has been **removed** -- all information is now in executable SQL
+
+### Added
+
+- **`generateDropTableSQL()`** - Modular generator for `DROP TABLE IF EXISTS ... CASCADE`
+- **`generateCreateTableSQL()`** - Modular generator for `CREATE TABLE` with pg_catalog-sourced column definitions
+- **`generateOwnerSQL()`** - Modular generator for `ALTER TABLE ... OWNER TO`
+- **`generateConstraintsSQL()`** - Modular generator for idempotent constraint management
+- **`generateIndexesSQL()`** - Modular generator for idempotent index management
+- **`generateCommentsSQL()`** - Modular generator for `COMMENT ON TABLE/COLUMN` statements
+- **`generateIndexCommentsSQL()`** - Modular generator for `COMMENT ON INDEX` statements
+- **`generateRlsSQL()`** - Modular generator combining RLS enable + policy management (with inline `DROP POLICY IF EXISTS`)
+- **New pg_catalog queries** for precise introspection:
+  - `getColumnDefinitions()` - Uses `pg_attribute` + `pg_type` + `pg_attrdef` + `format_type()` for exact types
+  - `getConstraintDefinitions()` - Uses `pg_constraint` + `pg_get_constraintdef()` for exact constraint definitions
+  - `getIndexDefinitions()` - Uses `pg_class` + `pg_index` + `pg_get_indexdef()` (excludes constraint-backing indexes)
+  - `getPartitionInfo()` - Uses `pg_partitioned_table` + `pg_get_partkeydef()` for partition strategy
+- **Parallel data gathering** - All table introspection queries now run in parallel via `Promise.all()` for better performance
+- **Section delimiters** - Each section of the generated SQL is clearly delimited with comment headers:
+  `-- ----------------------------------------`
+  `-- SECTION NAME`
+  `-- ----------------------------------------`
+
+### Changed
+
+- **Table file structure** completely redesigned with 10 ordered sections:
+  1. Header (table name, generator attribution)
+  2. DROP TABLE (idempotent cleanup)
+  3. CREATE TABLE (full DDL with columns)
+  4. OWNER (table ownership)
+  5. CONSTRAINTS (PK, UNIQUE, FK, CHECK, EXCLUSION)
+  6. INDEXES (non-constraint indexes)
+  7. COMMENTS (table, column, and index comments)
+  8. ROW LEVEL SECURITY (enable + policies with inline DROP/CREATE)
+  9. GRANTS (table-level + column-level with REVOKE ALL cleanup)
+  10. TRIGGERS (with inline DROP/CREATE)
+- **Deterministic output** reinforced: all constraints sorted by type then name, all indexes by name, all policies by name, all triggers by name, all grants by grantee then privilege
+- **Idempotent by design**: every construct uses DROP IF EXISTS before CREATE/ADD, making scripts safe to run repeatedly
+
+### Removed
+
+- `generateSchemaDocumentation()` - Replaced by executable DDL (no more documentation-only comment blocks)
+- Legacy `getColumns()` method (replaced by `getColumnDefinitions()` using pg_catalog)
+- Legacy `getConstraints()` method (replaced by `getConstraintDefinitions()` using pg_catalog)
+- Legacy `getTableIndexes()` method (replaced by `getIndexDefinitions()` using pg_catalog)
+
 ## [1.5.0] - 2025-11-13
 
 ### Added
@@ -183,6 +241,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Output Structure**: Organized folder structure with schema separation
 - **Security**: Role mapping for safe deployment workflows
 
-[Unreleased]: https://github.com/GRINN-dev/tablerizer/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/GRINN-dev/tablerizer/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/GRINN-dev/tablerizer/compare/v1.5.0...v2.0.0
+[1.5.0]: https://github.com/GRINN-dev/tablerizer/compare/v1.4.3...v1.5.0
+[1.4.6]: https://github.com/GRINN-dev/tablerizer/compare/v1.4.3...v1.4.6
+[1.4.5]: https://github.com/GRINN-dev/tablerizer/compare/v1.4.3...v1.4.5
+[1.4.4]: https://github.com/GRINN-dev/tablerizer/compare/v1.4.3...v1.4.4
+[1.4.3]: https://github.com/GRINN-dev/tablerizer/compare/v1.4.0...v1.4.3
+[1.4.2]: https://github.com/GRINN-dev/tablerizer/compare/v1.4.0...v1.4.2
+[1.4.1]: https://github.com/GRINN-dev/tablerizer/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/GRINN-dev/tablerizer/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/GRINN-dev/tablerizer/compare/v1.1.0...v1.3.0
 [1.1.0]: https://github.com/GRINN-dev/tablerizer/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/GRINN-dev/tablerizer/releases/tag/v1.0.0

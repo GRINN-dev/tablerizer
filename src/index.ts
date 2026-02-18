@@ -4,7 +4,14 @@
 
 import fs from "fs/promises";
 import path from "path";
-import type { DatabaseConnection, FunctionInfo } from "./database.js";
+import type {
+  DatabaseConnection,
+  FunctionInfo,
+  ColumnDefinition,
+  ConstraintDefinition,
+  IndexDefinition,
+  PartitionInfo,
+} from "./database.js";
 import { createConnection } from "./database.js";
 import type { TablerizerOptions, ExportScope } from "./config.js";
 import { validateConfig, mergeConfigs, getDefaultConfig } from "./config.js";
@@ -591,39 +598,7 @@ export class Tablerizer {
   }
 
   /**
-   * Get indexes for a table with comments
-   */
-  private async getTableIndexes(schema: string, tableName: string) {
-    return await this.connection!.query<{
-      index_name: string;
-      index_definition: string;
-      comment: string | null;
-    }>(
-      `
-      SELECT 
-        i.relname as index_name,
-        pg_get_indexdef(i.oid) as index_definition,
-        obj_description(i.oid, 'pg_class') as comment
-      FROM pg_class i
-      JOIN pg_index ix ON ix.indexrelid = i.oid
-      JOIN pg_class t ON t.oid = ix.indrelid
-      JOIN pg_namespace n ON n.oid = t.relnamespace
-      WHERE (t.relkind = 'r' OR t.relkind = 'p')  -- regular and partitioned tables
-        AND n.nspname = $1
-        AND t.relname = $2
-        -- Exclude primary key indexes created automatically by constraints
-        AND NOT EXISTS (
-          SELECT 1 FROM pg_constraint c 
-          WHERE c.conindid = i.oid AND c.contype = 'p'
-        )
-      ORDER BY i.relname
-      `,
-      [schema, tableName]
-    );
-  }
-
-  /**
-   * Get comprehensive table data including RBAC, RLS, triggers, constraints, etc.
+   * Get comprehensive table data including DDL, RBAC, RLS, triggers, constraints, etc.
    */
   private async getTableData(
     schema: string,
@@ -657,29 +632,30 @@ export class Tablerizer {
 
     const table = tableInfo[0];
 
-    // Get table grants
-    const tableGrants = await this.getTableGrants(schema, tableName);
-
-    // Get column grants
-    const columnGrants = await this.getColumnGrants(schema, tableName);
-
-    // Get RLS policies
-    const policies = await this.getPolicies(schema, tableName);
-
-    // Get triggers
-    const triggers = await this.getTriggers(schema, tableName);
-
-    // Get columns
-    const columns = await this.getColumns(schema, tableName);
-
-    // Get constraints
-    const constraints = await this.getConstraints(schema, tableName);
-
-    // Get indexes
-    const indexes = await this.getTableIndexes(schema, tableName);
-
-    // Get table comment
-    const tableComment = await this.getTableComment(schema, tableName);
+    // Gather all data in parallel for performance
+    const [
+      tableGrants,
+      columnGrants,
+      policies,
+      triggers,
+      columnDefinitions,
+      constraintDefinitions,
+      indexDefinitions,
+      partitionInfo,
+      tableComment,
+    ] = await Promise.all([
+      this.getTableGrants(schema, tableName),
+      this.getColumnGrants(schema, tableName),
+      this.getPolicies(schema, tableName),
+      this.getTriggers(schema, tableName),
+      this.getColumnDefinitions(schema, tableName),
+      this.getConstraintDefinitions(schema, tableName),
+      this.getIndexDefinitions(schema, tableName),
+      table.relkind === "p"
+        ? this.getPartitionInfo(schema, tableName)
+        : Promise.resolve(null),
+      this.getTableComment(schema, tableName),
+    ]);
 
     return {
       table: tableName,
@@ -694,10 +670,136 @@ export class Tablerizer {
         column_grants: columnGrants,
       },
       triggers,
-      columns,
-      constraints,
-      indexes,
+      column_definitions: columnDefinitions,
+      constraint_definitions: constraintDefinitions,
+      index_definitions: indexDefinitions,
+      partition_info: partitionInfo,
       comment: tableComment,
+    };
+  }
+
+  /**
+   * Get column definitions from pg_catalog (pg_dump-style exact types)
+   */
+  private async getColumnDefinitions(
+    schema: string,
+    tableName: string
+  ): Promise<ColumnDefinition[]> {
+    return await this.connection!.query<ColumnDefinition>(
+      `
+      SELECT
+        a.attname AS column_name,
+        pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+        a.attnotnull AS not_null,
+        pg_get_expr(d.adbin, d.adrelid) AS column_default,
+        col_description(a.attrelid, a.attnum) AS comment,
+        a.attnum AS ordinal_position
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      LEFT JOIN pg_attrdef d ON (a.attrelid = d.adrelid AND a.attnum = d.adnum)
+      WHERE n.nspname = $1
+        AND c.relname = $2
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+      ORDER BY a.attnum
+      `,
+      [schema, tableName]
+    );
+  }
+
+  /**
+   * Get constraint definitions from pg_catalog (exact via pg_get_constraintdef)
+   */
+  private async getConstraintDefinitions(
+    schema: string,
+    tableName: string
+  ): Promise<ConstraintDefinition[]> {
+    return await this.connection!.query<ConstraintDefinition>(
+      `
+      SELECT
+        con.conname AS constraint_name,
+        con.contype AS constraint_type,
+        pg_get_constraintdef(con.oid, true) AS definition
+      FROM pg_constraint con
+      JOIN pg_class c ON c.oid = con.conrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $1
+        AND c.relname = $2
+      ORDER BY
+        CASE con.contype
+          WHEN 'p' THEN 1
+          WHEN 'u' THEN 2
+          WHEN 'f' THEN 3
+          WHEN 'c' THEN 4
+          WHEN 'x' THEN 5
+        END,
+        con.conname
+      `,
+      [schema, tableName]
+    );
+  }
+
+  /**
+   * Get index definitions from pg_catalog (executable CREATE INDEX statements)
+   */
+  private async getIndexDefinitions(
+    schema: string,
+    tableName: string
+  ): Promise<IndexDefinition[]> {
+    return await this.connection!.query<IndexDefinition>(
+      `
+      SELECT
+        i.relname AS index_name,
+        pg_get_indexdef(i.oid) AS index_definition,
+        obj_description(i.oid, 'pg_class') AS comment
+      FROM pg_class i
+      JOIN pg_index ix ON ix.indexrelid = i.oid
+      JOIN pg_class t ON t.oid = ix.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      WHERE (t.relkind = 'r' OR t.relkind = 'p')
+        AND n.nspname = $1
+        AND t.relname = $2
+        -- Exclude indexes backing constraints (PK, UNIQUE, EXCLUSION)
+        AND NOT EXISTS (
+          SELECT 1 FROM pg_constraint c
+          WHERE c.conindid = i.oid
+        )
+      ORDER BY i.relname
+      `,
+      [schema, tableName]
+    );
+  }
+
+  /**
+   * Get partition information for a partitioned table
+   */
+  private async getPartitionInfo(
+    schema: string,
+    tableName: string
+  ): Promise<PartitionInfo | null> {
+    const result = await this.connection!.query<{
+      partition_strategy: string;
+      partition_key: string;
+    }>(
+      `
+      SELECT
+        pt.partstrat AS partition_strategy,
+        pg_get_partkeydef(c.oid) AS partition_key
+      FROM pg_partitioned_table pt
+      JOIN pg_class c ON c.oid = pt.partrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $1
+        AND c.relname = $2
+      `,
+      [schema, tableName]
+    );
+
+    if (result.length === 0) return null;
+
+    return {
+      partition_strategy: result[0].partition_strategy,
+      partition_key: result[0].partition_key,
     };
   }
 
@@ -772,54 +874,6 @@ export class Tablerizer {
       FROM information_schema.triggers
       WHERE trigger_schema = $1 AND event_object_table = $2
       ORDER BY trigger_name, event_manipulation
-      `,
-      [schema, tableName]
-    );
-  }
-
-  private async getColumns(schema: string, tableName: string) {
-    return await this.connection!.query(
-      `
-      SELECT 
-        column_name,
-        data_type,
-        is_nullable,
-        column_default,
-        character_maximum_length,
-        numeric_precision,
-        numeric_scale,
-        col_description(c.oid, a.attnum) as comment
-      FROM information_schema.columns isc
-      LEFT JOIN pg_class c ON c.relname = isc.table_name
-      LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = isc.table_schema
-      LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = isc.column_name
-      WHERE table_schema = $1 AND table_name = $2
-      ORDER BY ordinal_position
-      `,
-      [schema, tableName]
-    );
-  }
-
-  private async getConstraints(schema: string, tableName: string) {
-    return await this.connection!.query(
-      `
-      SELECT 
-        tc.constraint_name,
-        tc.constraint_type,
-        kcu.column_name,
-        ccu.table_schema as foreign_table_schema,
-        ccu.table_name as foreign_table_name,
-        ccu.column_name as foreign_column_name,
-        cc.check_clause
-      FROM information_schema.table_constraints tc
-      LEFT JOIN information_schema.key_column_usage kcu 
-        ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-      LEFT JOIN information_schema.constraint_column_usage ccu 
-        ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.constraint_schema
-      LEFT JOIN information_schema.check_constraints cc 
-        ON tc.constraint_name = cc.constraint_name AND tc.table_schema = cc.constraint_schema
-      WHERE tc.table_schema = $1 AND tc.table_name = $2
-      ORDER BY tc.constraint_type, tc.constraint_name
       `,
       [schema, tableName]
     );
