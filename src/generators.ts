@@ -66,7 +66,7 @@ export interface TableData {
  */
 export function applyRoleMappings(
   content: string,
-  roleMappings: Record<string, string>
+  roleMappings: Record<string, string>,
 ): string {
   let mappedContent = content;
 
@@ -83,7 +83,7 @@ export function applyRoleMappings(
       mappedContent = mappedContent.replace(pattern, (match) => {
         return match.replace(
           new RegExp(`"?${actualRole}"?`, "gi"),
-          placeholder
+          placeholder,
         );
       });
     }
@@ -103,7 +103,7 @@ export function generateGrantsSQL(
     grantee: string;
     privilege: string;
     is_grantable: boolean;
-  }>
+  }>,
 ): string[] {
   const sqlStatements: string[] = [];
 
@@ -145,7 +145,7 @@ export function generateColumnGrantsSQL(
     grantee: string;
     privilege: string;
     is_grantable: boolean;
-  }>
+  }>,
 ): string[] {
   const sqlStatements: string[] = [];
 
@@ -176,7 +176,7 @@ export function generateColumnGrantsSQL(
 
       // Finally by grantable status
       return grantableA.localeCompare(grantableB);
-    }
+    },
   );
 
   // Generate GRANT statements
@@ -191,11 +191,11 @@ export function generateColumnGrantsSQL(
     // Sort columns alphabetically for consistent output
     const sortedColumns = Array.from(columns).sort();
     const escapedColumns = sortedColumns.map((col) =>
-      col.includes(" ") || col.includes("-") ? `"${col}"` : col
+      col.includes(" ") || col.includes("-") ? `"${col}"` : col,
     );
 
     let sql = `GRANT ${privilege} (${escapedColumns.join(
-      ", "
+      ", ",
     )}) ON TABLE ${schema}.${tableName} TO ${escapedGrantee}`;
     if (isGrantable) {
       sql += " WITH GRANT OPTION";
@@ -221,7 +221,7 @@ export function generateTriggersSQL(
     action_statement: string;
     action_condition: string | null;
     action_order: number;
-  }>
+  }>,
 ): string[] {
   const sqlStatements: string[] = [];
 
@@ -263,7 +263,7 @@ export function generateTriggersSQL(
 
   // Generate SQL for each trigger group (sorted alphabetically by trigger name)
   const sortedTriggers = Array.from(triggerGroups.values()).sort((a, b) =>
-    a.trigger_name.localeCompare(b.trigger_name)
+    a.trigger_name.localeCompare(b.trigger_name),
   );
 
   for (const triggerGroup of sortedTriggers) {
@@ -309,26 +309,26 @@ export function generatePoliciesSQL(
     permissive: string;
     using?: string | null;
     with_check?: string | null;
-  }>
+  }>,
 ): string[] {
   const sqlStatements: string[] = [];
 
   // Enable RLS if needed
   if (rlsEnabled) {
     sqlStatements.push(
-      `ALTER TABLE ${schema}.${tableName} ENABLE ROW LEVEL SECURITY;`
+      `ALTER TABLE ${schema}.${tableName} ENABLE ROW LEVEL SECURITY;`,
     );
   }
 
   if (rlsForce) {
     sqlStatements.push(
-      `ALTER TABLE ${schema}.${tableName} FORCE ROW LEVEL SECURITY;`
+      `ALTER TABLE ${schema}.${tableName} FORCE ROW LEVEL SECURITY;`,
     );
   }
 
   // Create policies (sorted alphabetically by policy name)
   const sortedPolicies = policies.sort((a, b) =>
-    a.policy.localeCompare(b.policy)
+    a.policy.localeCompare(b.policy),
   );
 
   for (const policy of sortedPolicies) {
@@ -353,7 +353,7 @@ export function generatePoliciesSQL(
     ) {
       // Escape role names if needed
       const escapedRoles = policy.roles.map((role) =>
-        role.includes(" ") || role.includes("-") ? `"${role}"` : role
+        role.includes(" ") || role.includes("-") ? `"${role}"` : role,
       );
       sql += ` TO ${escapedRoles.join(", ")}`;
     }
@@ -387,7 +387,7 @@ export function generateSchemaDocumentation(
     index_definition: string;
     comment: string | null;
   }>,
-  tableComment?: string
+  tableComment?: string,
 ): string[] {
   const docs: string[] = [];
 
@@ -436,20 +436,20 @@ export function generateSchemaDocumentation(
   if (constraints && constraints.length > 0) {
     // Sort constraints by name for deterministic output
     const sortedConstraints = [...constraints].sort((a, b) =>
-      a.constraint_name.localeCompare(b.constraint_name)
+      a.constraint_name.localeCompare(b.constraint_name),
     );
 
     const primaryKeys = sortedConstraints.filter(
-      (c) => c.constraint_type === "PRIMARY KEY"
+      (c) => c.constraint_type === "PRIMARY KEY",
     );
     const foreignKeys = sortedConstraints.filter(
-      (c) => c.constraint_type === "FOREIGN KEY"
+      (c) => c.constraint_type === "FOREIGN KEY",
     );
     const uniqueKeys = sortedConstraints.filter(
-      (c) => c.constraint_type === "UNIQUE"
+      (c) => c.constraint_type === "UNIQUE",
     );
     const checkConstraints = sortedConstraints.filter(
-      (c) => c.constraint_type === "CHECK"
+      (c) => c.constraint_type === "CHECK",
     );
 
     if (primaryKeys.length > 0) {
@@ -467,7 +467,7 @@ export function generateSchemaDocumentation(
 
       // Sort constraint names, then sort columns within each constraint
       const sortedPkConstraints = Array.from(pkGroups.entries()).sort((a, b) =>
-        a[0].localeCompare(b[0])
+        a[0].localeCompare(b[0]),
       );
 
       sortedPkConstraints.forEach(([constraintName, columns]) => {
@@ -510,7 +510,7 @@ export function generateSchemaDocumentation(
 
       // Sort constraint names, then sort columns within each constraint
       const sortedFkConstraints = Array.from(fkGroups.entries()).sort((a, b) =>
-        a[0].localeCompare(b[0])
+        a[0].localeCompare(b[0]),
       );
 
       sortedFkConstraints.forEach(([constraintName, group]) => {
@@ -525,8 +525,8 @@ export function generateSchemaDocumentation(
 
         docs.push(
           `  • ${constraintName}: ${sortedColumns.join(
-            ", "
-          )} → ${targetTable}.${sortedTargetColumns.join(", ")}`
+            ", ",
+          )} → ${targetTable}.${sortedTargetColumns.join(", ")}`,
         );
       });
       docs.push("");
@@ -547,7 +547,7 @@ export function generateSchemaDocumentation(
 
       // Sort constraint names, then sort columns within each constraint
       const sortedUkConstraints = Array.from(ukGroups.entries()).sort((a, b) =>
-        a[0].localeCompare(b[0])
+        a[0].localeCompare(b[0]),
       );
 
       sortedUkConstraints.forEach(([constraintName, columns]) => {
@@ -582,7 +582,7 @@ export function generateSchemaDocumentation(
 
     // Sort indexes by name for deterministic output
     const sortedIndexes = [...indexes].sort((a, b) =>
-      a.index_name.localeCompare(b.index_name)
+      a.index_name.localeCompare(b.index_name),
     );
 
     for (const idx of sortedIndexes) {
@@ -609,7 +609,7 @@ export function generateTableSQL(
   schema: string,
   tableData: TableData,
   roleMappings?: Record<string, string>,
-  includeDate: boolean = false
+  includeDate: boolean = false,
 ): string {
   const tableName = tableData.table;
   const sections: string[] = [];
@@ -637,7 +637,7 @@ export function generateTableSQL(
           ? `"${policy.policy}"`
           : policy.policy;
       sections.push(
-        `DROP POLICY IF EXISTS ${escapedPolicyName} ON ${schema}.${tableName};`
+        `DROP POLICY IF EXISTS ${escapedPolicyName} ON ${schema}.${tableName};`,
       );
     }
     sections.push("");
@@ -646,7 +646,7 @@ export function generateTableSQL(
   // Drop existing triggers
   if (tableData.triggers.length > 0) {
     const uniqueTriggerNames = new Set(
-      tableData.triggers.map((t) => t.trigger_name)
+      tableData.triggers.map((t) => t.trigger_name),
     );
     // Sort trigger names for deterministic output
     const sortedTriggerNames = Array.from(uniqueTriggerNames).sort();
@@ -656,7 +656,7 @@ export function generateTableSQL(
           ? `"${triggerName}"`
           : triggerName;
       sections.push(
-        `DROP TRIGGER IF EXISTS ${escapedTriggerName} ON ${schema}.${tableName};`
+        `DROP TRIGGER IF EXISTS ${escapedTriggerName} ON ${schema}.${tableName};`,
       );
     }
     sections.push("");
@@ -671,10 +671,10 @@ export function generateTableSQL(
 
     // Get unique grantees and sort them
     const tableGrantees = new Set(
-      tableData.rbac.table_grants.map((g) => g.grantee)
+      tableData.rbac.table_grants.map((g) => g.grantee),
     );
     const columnGrantees = new Set(
-      tableData.rbac.column_grants.map((g) => g.grantee)
+      tableData.rbac.column_grants.map((g) => g.grantee),
     );
     const allGrantees = new Set([...tableGrantees, ...columnGrantees]);
     const sortedGrantees = Array.from(allGrantees).sort();
@@ -685,7 +685,7 @@ export function generateTableSQL(
           ? `"${grantee}"`
           : grantee;
       sections.push(
-        `REVOKE ALL ON TABLE ${schema}.${tableName} FROM ${escapedGrantee};`
+        `REVOKE ALL ON TABLE ${schema}.${tableName} FROM ${escapedGrantee};`,
       );
     }
     sections.push("");
@@ -694,7 +694,7 @@ export function generateTableSQL(
   // Disable RLS
   if (tableData.rls.enabled) {
     sections.push(
-      `ALTER TABLE ${schema}.${tableName} DISABLE ROW LEVEL SECURITY;`
+      `ALTER TABLE ${schema}.${tableName} DISABLE ROW LEVEL SECURITY;`,
     );
     sections.push("");
   }
@@ -710,7 +710,7 @@ export function generateTableSQL(
     const grantsSQL = generateGrantsSQL(
       schema,
       tableName,
-      tableData.rbac.table_grants
+      tableData.rbac.table_grants,
     );
     sections.push(...grantsSQL);
     sections.push("");
@@ -722,7 +722,7 @@ export function generateTableSQL(
     const columnGrantsSQL = generateColumnGrantsSQL(
       schema,
       tableName,
-      tableData.rbac.column_grants
+      tableData.rbac.column_grants,
     );
     sections.push(...columnGrantsSQL);
     sections.push("");
@@ -736,7 +736,7 @@ export function generateTableSQL(
       tableName,
       tableData.rls.enabled,
       tableData.rls.force,
-      tableData.rls.policies
+      tableData.rls.policies,
     );
     sections.push(...policiesSQL);
     sections.push("");
@@ -748,7 +748,7 @@ export function generateTableSQL(
     const triggersSQL = generateTriggersSQL(
       schema,
       tableName,
-      tableData.triggers
+      tableData.triggers,
     );
     sections.push(...triggersSQL);
     sections.push("");
@@ -761,7 +761,7 @@ export function generateTableSQL(
     tableData.columns,
     tableData.constraints,
     tableData.indexes,
-    tableData.comment
+    tableData.comment,
   );
   sections.push(...schemaDoc);
 
@@ -782,7 +782,7 @@ export function generateFunctionSQL(
   func: FunctionInfo,
   roles?: string[],
   roleMappings?: Record<string, string>,
-  includeDate: boolean = false
+  includeDate: boolean = false,
 ): string {
   const lines: string[] = [];
 
@@ -800,16 +800,19 @@ export function generateFunctionSQL(
   }
   if (roles && roles.length > 0) {
     // Apply role mappings to roles in header for deterministic output
-    const displayRoles = roleMappings && Object.keys(roleMappings).length > 0
-      ? roles.map(role => roleMappings[role] || role)
-      : roles;
+    const displayRoles =
+      roleMappings && Object.keys(roleMappings).length > 0
+        ? roles.map((role) => roleMappings[role] || role)
+        : roles;
     lines.push(`-- Grants for roles: ${displayRoles.join(", ")}`);
   }
   lines.push("");
 
   // The function definition from PostgreSQL already includes CREATE OR REPLACE
   // and proper formatting, so we can use it directly
-  lines.push(func.function_definition);
+  // Ensure the function definition ends with a semicolon
+  const funcDef = func.function_definition.trim();
+  lines.push(funcDef.endsWith(";") ? funcDef : funcDef + ";");
 
   // Add comment if it exists
   if (func.comment) {
@@ -819,7 +822,7 @@ export function generateFunctionSQL(
         func.function_arguments
       }) IS ${
         func.comment.includes("'") ? `$$${func.comment}$$` : `'${func.comment}'`
-      };`
+      };`,
     );
   }
 
@@ -834,7 +837,7 @@ export function generateFunctionSQL(
       const escapedRole =
         role.includes(" ") || role.includes("-") ? `"${role}"` : role;
       lines.push(
-        `GRANT EXECUTE ON FUNCTION ${func.schema_name}.${func.function_name}(${func.function_arguments}) TO ${escapedRole};`
+        `GRANT EXECUTE ON FUNCTION ${func.schema_name}.${func.function_name}(${func.function_arguments}) TO ${escapedRole};`,
       );
     }
   }
@@ -865,13 +868,13 @@ export function generateMaterializedViewSQL(
     index_definition: string;
   }>,
   roleMappings?: Record<string, string>,
-  includeDate: boolean = false
+  includeDate: boolean = false,
 ): string {
   const lines: string[] = [];
 
   lines.push(`-- ========================================`);
   lines.push(
-    `-- Materialized View: ${matview.schema_name}.${matview.matview_name}`
+    `-- Materialized View: ${matview.schema_name}.${matview.matview_name}`,
   );
   lines.push(`-- Generated by Tablerizer 🎲`);
   if (includeDate) {
@@ -888,7 +891,7 @@ export function generateMaterializedViewSQL(
   // Documentation section
   lines.push("/*");
   lines.push(
-    `  MATERIALIZED VIEW DOCUMENTATION: ${matview.schema_name}.${matview.matview_name}`
+    `  MATERIALIZED VIEW DOCUMENTATION: ${matview.schema_name}.${matview.matview_name}`,
   );
   lines.push("  " + "=".repeat(65));
   lines.push("");
@@ -900,7 +903,7 @@ export function generateMaterializedViewSQL(
 
   lines.push(`  Owner: ${matview.owner}`);
   lines.push(
-    `  Status: ${matview.is_populated ? "Populated" : "Not Populated"}`
+    `  Status: ${matview.is_populated ? "Populated" : "Not Populated"}`,
   );
   lines.push("");
 
@@ -910,7 +913,7 @@ export function generateMaterializedViewSQL(
     lines.push("  --------");
     // Sort indexes by name for deterministic output
     const sortedIndexes = [...indexes].sort((a, b) =>
-      a.index_name.localeCompare(b.index_name)
+      a.index_name.localeCompare(b.index_name),
     );
     for (const idx of sortedIndexes) {
       lines.push(`  • ${idx.index_name}`);
@@ -958,7 +961,7 @@ export function generateMaterializedViewSQL(
           ? `"${grantee}"`
           : grantee;
       lines.push(
-        `REVOKE ALL ON TABLE ${matview.schema_name}.${matview.matview_name} FROM ${escapedGrantee};`
+        `REVOKE ALL ON TABLE ${matview.schema_name}.${matview.matview_name} FROM ${escapedGrantee};`,
       );
     }
     lines.push("");
