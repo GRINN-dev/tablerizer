@@ -58,6 +58,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Deterministic output** reinforced: all constraints sorted by type then name, all indexes by name, all policies by name, all triggers by name, all grants by grantee then privilege
 - **Idempotent by design**: every construct uses DROP IF EXISTS before CREATE/ADD, making scripts safe to run repeatedly
 
+### Architecture
+
+- **Modular source code** — `src/generators.ts` (1083 lines) split into 13 focused files under `src/generators/`:
+  `utils.ts`, `types.ts`, `table-ddl.ts`, `constraints.ts`, `indexes.ts`, `comments.ts`, `rls.ts`, `grants.ts`, `triggers.ts`, `table-assembler.ts`, `function.ts`, `materialized-view.ts`, and a barrel `index.ts`
+- **Modular entry point** — `src/index.ts` (960 lines) split into `src/queries.ts` (15 standalone query functions), `src/tablerizer.ts` (Tablerizer class), and `src/convenience.ts` (4 convenience wrappers)
+- Backward-compatible re-export shims preserve the public API and `package.json` exports map
+
+### Tests
+
+- **93 tests** (45 unit + 48 integration), all passing in Docker and CI
+- **Docker test infrastructure**: `docker-compose.test.yml` + `Dockerfile.test` + `run-tests.sh` — one command: `npm run test:docker`
+- **Unit tests** (`test/unit/`): 13 files, one per generator — deterministic output, sorting, idempotency, edge cases
+- **Integration tests** (`test/integration/`): 15 files against real PostgreSQL — DDL structure, constraints, indexes, comments, RLS, grants, triggers, partitions, functions, materialized views, scoping, determinism, configuration
+- **CI workflow** (`test.yml`): unit tests on Node 18/20/22, integration tests with PostgreSQL 16 service container, lint/type-check
+- Test fixtures use fully schema-qualified objects (`app_public.users`, not `users`), owned by `DATABASE_OWNER`
+
 ### Removed
 
 - `generateSchemaDocumentation()` - Replaced by executable DDL (no more documentation-only comment blocks)

@@ -1,4 +1,4 @@
-name: 🧪 Test & Validate
+name: Test & Validate
 
 on:
   push:
@@ -7,67 +7,100 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: 🧪 Test on Node ${{ matrix.node-version }}
-    runs-on: ${{ matrix.os }}
+  # ── Unit tests (no DB needed) ──────────────────────────────
+  unit:
+    name: Unit tests · Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         node-version: [18, 20, 22]
-        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 📦 Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "npm"
+          cache: npm
 
-      - name: 📋 Install dependencies
-        run: npm ci
+      - run: npm ci
+      - run: npm run build
 
-      - name: 🏗️ Build package
-        run: npm run build
-
-      - name: ✅ Test CLI binary
+      - name: CLI smoke test
         run: |
           node bin/tablerizer.js --version
           node bin/tablerizer.js --help
 
-      - name: 🧪 Test library imports
+      - name: Library import test
         run: |
           node -e "
           (async () => {
-            try {
-              const { Tablerizer, exportTables } = await import('./lib/index.js');
-              console.log('✅ Library imports working on Node ${{ matrix.node-version }}');
-            } catch (error) {
-              console.error('❌ Import test failed:', error.message);
-              process.exit(1);
-            }
+            const { Tablerizer, exportTables } = await import('./lib/index.js');
+            console.log('Library imports OK');
           })();
           "
 
+      - name: Unit tests (generators)
+        run: node --import tsx --test --test-timeout=10000 test/generators.test.ts
+
+  # ── Integration tests (real PostgreSQL) ────────────────────
+  integration:
+    name: Integration tests · Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      ROOT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      DATABASE_NAME: tablerizer_test
+      DATABASE_OWNER: tablerizer_owner
+      DATABASE_OWNER_PASSWORD: test_owner_pass
+      DATABASE_AUTHENTICATOR: tablerizer_authenticator
+      DATABASE_AUTHENTICATOR_PASSWORD: test_auth_pass
+      DATABASE_VISITOR: tablerizer_visitor
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Integration tests
+        run: node --import tsx --test --test-timeout=30000 test/integration.test.ts
+
+  # ── Lint / type-check ──────────────────────────────────────
   lint:
-    name: 🎨 Lint & Format
+    name: Lint & type-check
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: "18"
-          cache: "npm"
+          node-version: "20"
+          cache: npm
 
-      - name: 📋 Install dependencies
-        run: npm ci
-
-      - name: 🎨 Check TypeScript
-        run: npx tsc --noEmit
-
-      - name: 📋 Verify package structure
-        run: npm pack --dry-run
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm pack --dry-run

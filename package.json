@@ -48,7 +48,11 @@
     "release:patch": "npm version patch && git push origin main && git push origin --tags",
     "release:minor": "npm version minor && git push origin main && git push origin --tags",
     "release:major": "npm version major && git push origin main && git push origin --tags",
-    "check": "npm run build && npm pack --dry-run"
+    "check": "npm run build && npm pack --dry-run",
+    "test": "npm run build && node --import tsx --test --test-timeout=30000 test/generators.test.ts test/integration.test.ts",
+    "test:unit": "npm run build && node --import tsx --test --test-timeout=10000 test/generators.test.ts",
+    "test:integration": "npm run build && node --import tsx --test --test-timeout=30000 test/integration.test.ts",
+    "test:docker": "bash run-tests.sh"
   },
   "keywords": [
     "postgresql",
@@ -84,6 +88,7 @@
   "devDependencies": {
     "@types/node": "^20.19.22",
     "@types/pg": "^8.15.5",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {

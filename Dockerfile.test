@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies first (layer caching)
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Copy source and test files
+COPY tsconfig.json ./
+COPY src/ ./src/
+COPY test/ ./test/
+
+# Build the project
+RUN npm run build
+
+# Run tests
+CMD ["node", "--import", "tsx", "--test", "--test-timeout=30000", "test/generators.test.ts", "test/integration.test.ts"]
