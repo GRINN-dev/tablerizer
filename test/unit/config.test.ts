@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveConfig, parseConfigFile, parseEnvVars } from "../../src/config.js";
+import { resolveConfig, parseConfigFile, parseEnvVars, parseCliArgs } from "../../src/config.js";
 
 describe("resolveConfig", () => {
   it("returns valid defaults when given no layers", () => {
@@ -97,5 +97,41 @@ describe("parseEnvVars", () => {
     assert.strictEqual(config.schemas, undefined);
     assert.strictEqual(config.out, undefined);
     assert.strictEqual(config.roles, undefined);
+  });
+});
+
+describe("parseCliArgs", () => {
+  it("parses all supported flags", () => {
+    const config = parseCliArgs([
+      "--schemas", "app_public,app_private",
+      "--out", "./exports",
+      "--roles", "admin,visitor",
+      "--database-url", "postgres://localhost/db",
+      "--scope", "tables",
+      "--include-date",
+      "--no-clean",
+      "--silent",
+    ]);
+    assert.deepStrictEqual(config.schemas, ["app_public", "app_private"]);
+    assert.strictEqual(config.out, "./exports");
+    assert.deepStrictEqual(config.roles, ["admin", "visitor"]);
+    assert.strictEqual(config.database_url, "postgres://localhost/db");
+    assert.strictEqual(config.scope, "tables");
+    assert.strictEqual(config.include_date, true);
+    assert.strictEqual(config.clean, false);
+    assert.strictEqual(config.silent, true);
+  });
+
+  it("parses boolean flag negations", () => {
+    const config = parseCliArgs(["--no-date", "--clean"]);
+    assert.strictEqual(config.include_date, false);
+    assert.strictEqual(config.clean, true);
+  });
+
+  it("returns empty partial for no args", () => {
+    const config = parseCliArgs([]);
+    assert.strictEqual(config.schemas, undefined);
+    assert.strictEqual(config.out, undefined);
+    assert.strictEqual(config.database_url, undefined);
   });
 });

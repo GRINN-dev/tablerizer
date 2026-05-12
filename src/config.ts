@@ -136,6 +136,63 @@ export function parseConfigFile(
   return expandConfigEnvVars(raw, undefined, env);
 }
 
+export function parseCliArgs(args: string[]): Partial<TablerizerOptions> {
+  const result: Partial<TablerizerOptions> = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const next = args[i + 1];
+
+    switch (arg) {
+      case "--schema":
+        result.schemas = [next];
+        i++;
+        break;
+      case "--schemas":
+        result.schemas = next.split(",").map(s => s.trim());
+        i++;
+        break;
+      case "--out":
+        result.out = next;
+        i++;
+        break;
+      case "--role":
+      case "--roles":
+        result.roles = next.split(",").map(r => r.trim());
+        i++;
+        break;
+      case "--database-url":
+        result.database_url = next;
+        i++;
+        break;
+      case "--scope":
+        result.scope = next as ExportScope;
+        i++;
+        break;
+      case "--include-date":
+        result.include_date = true;
+        break;
+      case "--no-date":
+        result.include_date = false;
+        break;
+      case "--clean":
+        result.clean = true;
+        break;
+      case "--no-clean":
+        result.clean = false;
+        break;
+      case "--silent":
+        result.silent = true;
+        break;
+      case "--config":
+        i++;
+        break;
+    }
+  }
+
+  return result;
+}
+
 export function parseEnvVars(
   env: Record<string, string | undefined>,
 ): Partial<TablerizerOptions> {
