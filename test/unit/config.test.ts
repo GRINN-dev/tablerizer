@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveConfig, parseConfigFile, parseEnvVars, parseCliArgs } from "../../src/config.js";
+import { resolveConfig, parseConfigFile, parseEnvVars, parseCliArgs, validateConfig } from "../../src/config.js";
 
 describe("resolveConfig", () => {
   it("returns valid defaults when given no layers", () => {
@@ -165,5 +165,34 @@ describe("parseCliArgs", () => {
     assert.strictEqual(config.schemas, undefined);
     assert.strictEqual(config.out, undefined);
     assert.strictEqual(config.database_url, undefined);
+  });
+});
+
+describe("validateConfig", () => {
+  it("throws when schemas is empty", () => {
+    assert.throws(
+      () => validateConfig({ schemas: [], database_url: "postgres://localhost/db" }),
+      { message: "At least one schema must be specified" },
+    );
+  });
+
+  it("throws when database_url is missing", () => {
+    assert.throws(
+      () => validateConfig({ schemas: ["public"] }),
+      { message: "Database URL must be provided" },
+    );
+  });
+
+  it("throws when a schema name is empty string", () => {
+    assert.throws(
+      () => validateConfig({ schemas: ["public", ""], database_url: "postgres://localhost/db" }),
+      { message: "Schema names cannot be empty" },
+    );
+  });
+
+  it("passes for valid config", () => {
+    assert.doesNotThrow(
+      () => validateConfig({ schemas: ["public"], database_url: "postgres://localhost/db" }),
+    );
   });
 });
