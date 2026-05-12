@@ -64,54 +64,50 @@ export function findConfigFile(): string | null {
   return null;
 }
 
-/**
- * Expand environment variables in a string value
- * Supports: $VAR, ${VAR}, ${VAR:default}
- */
-function expandEnvVars(value: string): string {
+function expandEnvVars(
+  value: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
   return value.replace(
     /\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g,
     (match, braced, simple) => {
       const varName = braced || simple;
 
-      // Handle default value syntax: ${VAR:default}
       if (braced && braced.includes(":")) {
         const [envVar, defaultValue] = braced.split(":", 2);
-        return process.env[envVar] || defaultValue;
+        return env[envVar] || defaultValue;
       }
 
-      // Simple variable expansion
-      return process.env[varName] || match;
+      return env[varName] || match;
     }
   );
 }
 
-/**
- * Recursively expand environment variables in config object
- * Special handling for role_mappings to expand variables in keys
- */
-function expandConfigEnvVars(obj: any, parentKey?: string): any {
+function expandConfigEnvVars(
+  obj: any,
+  parentKey?: string,
+  env?: Record<string, string | undefined>,
+): any {
   if (typeof obj === "string") {
-    return expandEnvVars(obj);
+    return expandEnvVars(obj, env);
   }
 
   if (Array.isArray(obj)) {
-    return obj.map(item => expandConfigEnvVars(item));
+    return obj.map(item => expandConfigEnvVars(item, undefined, env));
   }
 
   if (obj && typeof obj === "object") {
     const expanded: any = {};
-    
-    // Special handling for role_mappings: expand env vars in both keys and values
+
     if (parentKey === "role_mappings") {
       for (const [key, value] of Object.entries(obj)) {
-        const expandedKey = expandEnvVars(key);
-        const expandedValue = expandConfigEnvVars(value);
+        const expandedKey = expandEnvVars(key, env);
+        const expandedValue = expandConfigEnvVars(value, undefined, env);
         expanded[expandedKey] = expandedValue;
       }
     } else {
       for (const [key, value] of Object.entries(obj)) {
-        expanded[key] = expandConfigEnvVars(value, key);
+        expanded[key] = expandConfigEnvVars(value, key, env);
       }
     }
     return expanded;
@@ -126,15 +122,18 @@ function expandConfigEnvVars(obj: any, parentKey?: string): any {
 export function loadConfig(configPath: string): Config {
   try {
     const configContent = fs.readFileSync(configPath, "utf8");
-    const config = JSON.parse(configContent);
-
-    // Expand environment variables in the config
-    const expandedConfig = expandConfigEnvVars(config);
-
-    return expandedConfig;
+    return parseConfigFile(configContent);
   } catch (error) {
     throw new Error(`Failed to load config file ${configPath}: ${error}`);
   }
+}
+
+export function parseConfigFile(
+  jsonContent: string,
+  env?: Record<string, string | undefined>,
+): Partial<TablerizerOptions> {
+  const raw = JSON.parse(jsonContent);
+  return expandConfigEnvVars(raw, undefined, env);
 }
 
 export interface ConfigLayers {
