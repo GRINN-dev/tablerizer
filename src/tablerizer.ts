@@ -7,7 +7,7 @@ import path from "path";
 import type { DatabaseConnection } from "./database.js";
 import { createConnection } from "./database.js";
 import type { TablerizerOptions, ExportScope } from "./config.js";
-import { validateConfig, mergeConfigs, getDefaultConfig } from "./config.js";
+import { validateConfig, resolveConfig } from "./config.js";
 import {
   generateTableSQL,
   generateFunctionSQL,
@@ -58,14 +58,11 @@ export class Tablerizer {
   private options: TablerizerOptions;
 
   constructor(options: Partial<TablerizerOptions> = {}) {
-    this.options = mergeConfigs(getDefaultConfig(), options);
+    this.options = resolveConfig({ cli: options });
   }
 
-  /**
-   * Configure the exporter with new options
-   */
   configure(options: Partial<TablerizerOptions>): void {
-    this.options = mergeConfigs(this.options, options);
+    this.options = resolveConfig({ file: this.options, cli: options });
   }
 
   /**

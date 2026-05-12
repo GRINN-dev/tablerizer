@@ -2,8 +2,6 @@
  * Command-line interface for Tablerizer
  */
 
-import type { CliArgs } from "./config.js";
-
 const TOOL_NAME = "tablerizer";
 const VERSION = "2.0.0";
 
@@ -98,108 +96,9 @@ export function showVersion(): void {
   );
 }
 
-/**
- * Parse command line arguments
- */
-export function parseCliArgs(): Partial<CliArgs> {
-  const args = process.argv.slice(2);
-  const result: Partial<CliArgs> = {
-    role_mappings: {},
-  };
-
-  // Check for help or version first
-  if (args.includes("--help") || args.includes("-h")) {
-    showHelp();
-    process.exit(0);
-  }
-
-  if (args.includes("--version") || args.includes("-v")) {
-    showVersion();
-    process.exit(0);
-  }
-
-  // Parse arguments
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    const next = args[i + 1];
-
-    switch (arg) {
-      case "--schema":
-        // Legacy support for single schema
-        result.schemas = [next];
-        i++;
-        break;
-      case "--schemas":
-        result.schemas = next.split(",").map((s) => s.trim());
-        i++;
-        break;
-      case "--out":
-        result.out = next;
-        i++;
-        break;
-      case "--role":
-      case "--roles":
-        result.roles = next.split(",").map((r) => r.trim());
-        i++;
-        break;
-      case "--database-url":
-        result.database_url = next;
-        i++;
-        break;
-      case "--scope":
-        if (
-          next === "tables" ||
-          next === "functions" ||
-          next === "views" ||
-          next === "materialized-views" ||
-          next === "all"
-        ) {
-          result.scope = next;
-        } else {
-          console.error(
-            "❌ Invalid scope. Must be: tables, functions, views, materialized-views, or all"
-          );
-          process.exit(1);
-        }
-        i++;
-        break;
-      case "--include-date":
-        result.include_date = true;
-        break;
-      case "--no-date":
-        result.include_date = false;
-        break;
-      case "--clean":
-        result.clean = true;
-        break;
-      case "--no-clean":
-        result.clean = false;
-        break;
-      case "--silent":
-        result.silent = true;
-        break;
-      case "--config":
-        // Config file path is handled separately
-        i++;
-        break;
-    }
-  }
-
-  return result;
-}
-
-/**
- * Get config file path from CLI args
- */
-export function getConfigPath(): string | undefined {
-  const args = process.argv.slice(2);
-  const configIndex = args.indexOf("--config");
-
-  if (configIndex !== -1 && args[configIndex + 1]) {
-    return args[configIndex + 1];
-  }
-
-  return undefined;
+function getConfigPath(args: string[]): string | undefined {
+  const idx = args.indexOf("--config");
+  return idx !== -1 ? args[idx + 1] : undefined;
 }
 
 /**
@@ -338,17 +237,33 @@ export function displayProcessingStatus(silent?: boolean): void {
  * Main CLI runner function
  */
 export async function runCLI(): Promise<void> {
-  // Import here to avoid circular dependencies
   const { Tablerizer } = await import("./index.js");
-  const { resolveConfig } = await import("./config.js");
+  const { parseCliArgs, parseEnvVars, parseConfigFile, resolveConfig, findConfigFile, loadConfig } = await import("./config.js");
+  const fs = await import("fs");
 
   try {
-    // Parse CLI args
-    const cliArgs = parseCliArgs();
-    const configPath = getConfigPath();
+    const args = process.argv.slice(2);
 
-    // Resolve configuration
-    const config = await resolveConfig(cliArgs, configPath);
+    if (args.includes("--help") || args.includes("-h")) {
+      showHelp();
+      process.exit(0);
+    }
+    if (args.includes("--version") || args.includes("-v")) {
+      showVersion();
+      process.exit(0);
+    }
+
+    const configPath = getConfigPath(args);
+    const actualConfigPath = configPath || findConfigFile();
+    const fileLayer = actualConfigPath
+      ? parseConfigFile(fs.readFileSync(actualConfigPath, "utf8"))
+      : {};
+
+    const config = resolveConfig({
+      file: fileLayer,
+      env: parseEnvVars(process.env),
+      cli: parseCliArgs(args),
+    });
 
     // Show banner only if not in silent mode
     if (!config.silent) {

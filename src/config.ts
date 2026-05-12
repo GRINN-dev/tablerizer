@@ -5,18 +5,6 @@
 import fs from "fs";
 import path from "path";
 
-export interface Config {
-  schemas?: string[];
-  out?: string;
-  roles?: string[];
-  database_url?: string;
-  role_mappings?: Record<string, string>;
-  scope?: ExportScope | ExportScope[];
-  include_date?: boolean;
-  clean?: boolean;
-  silent?: boolean;
-}
-
 export type ExportScope =
   | "tables"
   | "functions"
@@ -33,18 +21,6 @@ export interface TablerizerOptions {
   scope?: ExportScope | ExportScope[];
   include_date?: boolean;
   clean?: boolean;
-  silent?: boolean;
-}
-
-export interface CliArgs {
-  schemas: string[];
-  out?: string;
-  roles?: string[];
-  database_url?: string;
-  role_mappings: Record<string, string>;
-  scope?: ExportScope | ExportScope[];
-  clean?: boolean;
-  include_date?: boolean;
   silent?: boolean;
 }
 
@@ -114,18 +90,6 @@ function expandConfigEnvVars(
   }
 
   return obj;
-}
-
-/**
- * Load and parse configuration file with environment variable expansion
- */
-export function loadConfig(configPath: string): Config {
-  try {
-    const configContent = fs.readFileSync(configPath, "utf8");
-    return parseConfigFile(configContent);
-  } catch (error) {
-    throw new Error(`Failed to load config file ${configPath}: ${error}`);
-  }
 }
 
 export function parseConfigFile(
@@ -281,26 +245,3 @@ export function getDefaultConfig(): TablerizerOptions {
   };
 }
 
-/**
- * Merge configurations (used for library usage)
- */
-export function mergeConfigs(
-  base: Partial<TablerizerOptions>,
-  override: Partial<TablerizerOptions>
-): TablerizerOptions {
-  return {
-    schemas: override.schemas || base.schemas || [],
-    out: override.out || base.out || "./tables",
-    roles: override.roles || base.roles,
-    database_url: override.database_url || base.database_url,
-    role_mappings: { ...base.role_mappings, ...override.role_mappings },
-    scope: override.scope || base.scope || "all",
-    include_date:
-      override.include_date !== undefined
-        ? override.include_date
-        : base.include_date ?? false,
-    clean: override.clean !== undefined ? override.clean : base.clean ?? true, // Default: clean output directory
-    silent:
-      override.silent !== undefined ? override.silent : base.silent ?? false, // Default: verbose output
-  };
-}
