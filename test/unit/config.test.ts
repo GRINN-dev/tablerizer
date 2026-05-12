@@ -18,6 +18,40 @@ describe("resolveConfig", () => {
 });
 
 describe("parseConfigFile", () => {
+  it("expands env vars in string values", () => {
+    const json = JSON.stringify({
+      database_url: "$DATABASE_URL",
+      out: "${OUTPUT_DIR}",
+      schemas: ["${SCHEMA_NAME}"],
+    });
+    const env = { DATABASE_URL: "postgres://prod/db", OUTPUT_DIR: "/out", SCHEMA_NAME: "public" };
+    const config = parseConfigFile(json, env);
+    assert.strictEqual(config.database_url, "postgres://prod/db");
+    assert.strictEqual(config.out, "/out");
+    assert.deepStrictEqual(config.schemas, ["public"]);
+  });
+
+  it("supports default value syntax ${VAR:default}", () => {
+    const json = JSON.stringify({ out: "${MISSING_VAR:./fallback}" });
+    const config = parseConfigFile(json, {});
+    assert.strictEqual(config.out, "./fallback");
+  });
+
+  it("expands env vars in role_mappings keys", () => {
+    const json = JSON.stringify({
+      role_mappings: { "$OWNER_ROLE": ":DATABASE_OWNER" },
+    });
+    const env = { OWNER_ROLE: "myapp_admin" };
+    const config = parseConfigFile(json, env);
+    assert.deepStrictEqual(config.role_mappings, { myapp_admin: ":DATABASE_OWNER" });
+  });
+
+  it("leaves unmatched vars intact", () => {
+    const json = JSON.stringify({ out: "$UNSET_VAR" });
+    const config = parseConfigFile(json, {});
+    assert.strictEqual(config.out, "$UNSET_VAR");
+  });
+
   it("parses JSON and returns typed config", () => {
     const json = JSON.stringify({
       schemas: ["app_public"],
