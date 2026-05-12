@@ -12,7 +12,7 @@ import type {
   PartitionInfo,
   MaterializedViewInfo,
 } from "./database.js";
-import type { TableData } from "./generators.js";
+import type { TableData } from "./generators/index.js";
 
 /**
  * Get list of tables in a schema

@@ -24,8 +24,8 @@
       "types": "./lib/database.d.ts"
     },
     "./generators": {
-      "import": "./lib/generators.js",
-      "types": "./lib/generators.d.ts"
+      "import": "./lib/generators/index.js",
+      "types": "./lib/generators/index.d.ts"
     }
   },
   "bin": {

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateTableSQL, type TableData } from "../../src/generators.js";
+import { generateTableSQL, type TableData } from "../../src/generators/index.js";
 
 describe("generateTableSQL", () => {
   const minimalTable: TableData = {

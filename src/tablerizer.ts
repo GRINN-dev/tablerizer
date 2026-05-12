@@ -13,7 +13,7 @@ import {
   generateFunctionSQL,
   generateMaterializedViewSQL,
   applyRoleMappings,
-} from "./generators.js";
+} from "./generators/index.js";
 import * as queries from "./queries.js";
 
 export interface ExportResult {

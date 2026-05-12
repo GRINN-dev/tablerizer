@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateDropTableSQL } from "../../src/generators.js";
+import { generateDropTableSQL } from "../../src/generators/index.js";
 import { join } from "./fixtures.js";
 
 describe("generateDropTableSQL", () => {

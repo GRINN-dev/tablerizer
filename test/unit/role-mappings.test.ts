@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { applyRoleMappings } from "../../src/generators.js";
+import { applyRoleMappings } from "../../src/generators/index.js";
 
 describe("applyRoleMappings", () => {
   it("should replace role names in GRANT TO", () => {

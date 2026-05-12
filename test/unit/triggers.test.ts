@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateTriggersSQL } from "../../src/generators.js";
+import { generateTriggersSQL } from "../../src/generators/index.js";
 import { join } from "./fixtures.js";
 
 describe("generateTriggersSQL", () => {
