@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateRlsSQL } from "../../lib/generators.js";
+import { generateRlsSQL } from "../../src/generators.js";
 import { join } from "./fixtures.js";
 
 describe("generateRlsSQL", () => {

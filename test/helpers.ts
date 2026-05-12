@@ -5,7 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { TestDatabase } from "./test-database.js";
-import { Tablerizer } from "../lib/index.js";
+import { Tablerizer } from "../src/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const OUTPUT_DIR = path.join(__dirname, "..", "test-output");

@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readOutput, freshTablerizer, cleanOutput } from "../helpers.js";
-import type { Tablerizer } from "../../lib/index.js";
+import type { Tablerizer } from "../../src/index.js";
 
 let tablerizer: Tablerizer;
 

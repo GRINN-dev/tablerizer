@@ -38,20 +38,20 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "bun build src/index.ts src/cli.ts src/config.ts src/database.ts src/generators.ts --outdir lib --target node",
     "dev": "tsc --watch",
-    "start": "node bin/tablerizer.js",
-    "help": "node bin/tablerizer.js --help",
-    "version": "node bin/tablerizer.js --version",
+    "start": "bun bin/tablerizer.js",
+    "help": "bun bin/tablerizer.js --help",
+    "version": "bun bin/tablerizer.js --version",
     "clean": "rm -rf lib",
-    "prepublishOnly": "npm run clean && npm run build",
-    "release:patch": "npm version patch && git push origin main && git push origin --tags",
-    "release:minor": "npm version minor && git push origin main && git push origin --tags",
-    "release:major": "npm version major && git push origin main && git push origin --tags",
-    "check": "npm run build && npm pack --dry-run",
-    "test": "npm run build && node --import tsx --test --test-timeout=30000 test/generators.test.ts test/integration.test.ts",
-    "test:unit": "npm run build && node --import tsx --test --test-timeout=10000 test/generators.test.ts",
-    "test:integration": "npm run build && node --import tsx --test --test-timeout=30000 test/integration.test.ts",
+    "prepublishOnly": "bun run clean && bun run build",
+    "release:patch": "bun version patch && git push origin main && git push origin --tags",
+    "release:minor": "bun version minor && git push origin main && git push origin --tags",
+    "release:major": "bun version major && git push origin main && git push origin --tags",
+    "check": "bun run build && bun pm pack --dry-run",
+    "test": "bun test test/unit/",
+    "test:unit": "bun test test/unit/",
+    "test:integration": "bun test test/integration/",
     "test:docker": "bash run-tests.sh"
   },
   "keywords": [
@@ -86,14 +86,10 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.22",
-    "@types/pg": "^8.15.5",
-    "tsx": "^4.21.0",
+    "@types/bun": "latest",
     "typescript": "^5.0.0"
   },
-  "dependencies": {
-    "pg": "^8.16.3"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "typescript": "^5.0.0"
   }

@@ -2,41 +2,38 @@
  * Database connection and query utilities for Tablerizer
  */
 
-import { Client } from "pg";
+import { SQL } from "bun";
 
 export interface DatabaseConnection {
-  client: Client;
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   query<T = any>(text: string, params?: any[]): Promise<T[]>;
 }
 
-export class PostgreSQLConnection implements DatabaseConnection {
-  public client: Client;
+export class BunSQLConnection implements DatabaseConnection {
+  private sql: InstanceType<typeof SQL>;
 
   constructor(connectionString: string) {
-    this.client = new Client({ connectionString });
+    this.sql = new SQL(connectionString);
   }
 
   async connect(): Promise<void> {
-    await this.client.connect();
+    // Bun SQL connects on first query; verify connectivity here
+    await this.sql.unsafe("SELECT 1");
   }
 
   async disconnect(): Promise<void> {
-    await this.client.end();
+    await this.sql.close();
   }
 
   async query<T = any>(text: string, params?: any[]): Promise<T[]> {
-    const result = await this.client.query(text, params);
-    return result.rows;
+    const rows = await this.sql.unsafe(text, params);
+    return rows as T[];
   }
 }
 
-/**
- * Create a database connection from connection string
- */
 export function createConnection(connectionString: string): DatabaseConnection {
-  return new PostgreSQLConnection(connectionString);
+  return new BunSQLConnection(connectionString);
 }
 
 /**

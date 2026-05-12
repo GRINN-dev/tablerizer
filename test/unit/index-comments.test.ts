@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateIndexCommentsSQL } from "../../lib/generators.js";
-import type { IndexDefinition } from "../../lib/database.js";
+import { generateIndexCommentsSQL } from "../../src/generators.js";
+import type { IndexDefinition } from "../../src/database.js";
 import { join } from "./fixtures.js";
 
 describe("generateIndexCommentsSQL", () => {

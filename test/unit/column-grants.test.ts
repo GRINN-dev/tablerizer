@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateColumnGrantsSQL } from "../../lib/generators.js";
+import { generateColumnGrantsSQL } from "../../src/generators.js";
 import { join } from "./fixtures.js";
 
 describe("generateColumnGrantsSQL", () => {

@@ -1,4 +1,4 @@
-import type { ColumnDefinition } from "../../lib/database.js";
+import type { ColumnDefinition } from "../../src/database.js";
 
 export function join(lines: string[]): string {
   return lines.join("\n");

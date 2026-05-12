@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateCreateTableSQL } from "../../lib/generators.js";
+import { generateCreateTableSQL } from "../../src/generators.js";
 import { join, cols } from "./fixtures.js";
 
 describe("generateCreateTableSQL", () => {
