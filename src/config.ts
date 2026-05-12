@@ -137,76 +137,44 @@ export function loadConfig(configPath: string): Config {
   }
 }
 
+export interface ConfigLayers {
+  file?: Partial<TablerizerOptions>;
+  env?: Partial<TablerizerOptions>;
+  cli?: Partial<TablerizerOptions>;
+}
+
 /**
- * Resolve configuration from multiple sources with precedence:
- * 1. CLI arguments (highest)
- * 2. Environment variables
- * 3. Configuration file (lowest)
+ * Resolve configuration by merging layers with explicit precedence:
+ * defaults < file < env < cli
  */
-export function resolveConfig(
-  cliArgs: Partial<CliArgs> = {},
-  configPath?: string
-): TablerizerOptions {
-  let config: Config = {};
+export function resolveConfig(layers: ConfigLayers): TablerizerOptions {
+  const defaults = getDefaultConfig();
+  const file = layers.file ?? {};
+  const env = layers.env ?? {};
+  const cli = layers.cli ?? {};
 
-  // Load config file if provided or found automatically
-  const actualConfigPath = configPath || findConfigFile();
-  if (actualConfigPath) {
-    config = loadConfig(actualConfigPath);
-  }
-
-  // Start with config file values
-  const resolved: TablerizerOptions = {
-    schemas: config.schemas || [],
-    out: config.out,
-    roles: config.roles,
-    database_url: config.database_url,
-    role_mappings: config.role_mappings || {},
-    scope: config.scope || "all",
-    include_date: config.include_date,
+  return {
+    schemas: first([cli.schemas, env.schemas, file.schemas, defaults.schemas], isNonEmptyArray) ?? [],
+    out: cli.out ?? env.out ?? file.out ?? defaults.out,
+    roles: cli.roles ?? env.roles ?? file.roles ?? defaults.roles,
+    database_url: cli.database_url ?? env.database_url ?? file.database_url ?? defaults.database_url,
+    role_mappings: { ...defaults.role_mappings, ...file.role_mappings, ...env.role_mappings, ...cli.role_mappings },
+    scope: cli.scope ?? env.scope ?? file.scope ?? defaults.scope,
+    include_date: cli.include_date ?? env.include_date ?? file.include_date ?? defaults.include_date,
+    clean: cli.clean ?? env.clean ?? file.clean ?? defaults.clean,
+    silent: cli.silent ?? env.silent ?? file.silent ?? defaults.silent,
   };
+}
 
-  // Override with environment variables
-  if (process.env.SCHEMAS && resolved.schemas.length === 0) {
-    resolved.schemas = process.env.SCHEMAS.split(",").map((s) => s.trim());
+function first<T>(candidates: (T | undefined)[], predicate: (v: T) => boolean): T | undefined {
+  for (const c of candidates) {
+    if (c !== undefined && predicate(c)) return c;
   }
-  if (process.env.OUTPUT_DIR && !resolved.out) {
-    resolved.out = process.env.OUTPUT_DIR;
-  }
-  if (process.env.ROLES && !resolved.roles) {
-    resolved.roles = process.env.ROLES.split(",").map((r) => r.trim());
-  }
-  if (process.env.DATABASE_URL && !resolved.database_url) {
-    resolved.database_url = process.env.DATABASE_URL;
-  }
+  return undefined;
+}
 
-  // Override with CLI arguments (highest precedence)
-  if (cliArgs.schemas && cliArgs.schemas.length > 0) {
-    resolved.schemas = cliArgs.schemas;
-  }
-  if (cliArgs.out) {
-    resolved.out = cliArgs.out;
-  }
-  if (cliArgs.roles) {
-    resolved.roles = cliArgs.roles;
-  }
-  if (cliArgs.database_url) {
-    resolved.database_url = cliArgs.database_url;
-  }
-  if (cliArgs.role_mappings && Object.keys(cliArgs.role_mappings).length > 0) {
-    resolved.role_mappings = {
-      ...resolved.role_mappings,
-      ...cliArgs.role_mappings,
-    };
-  }
-  if (cliArgs.scope) {
-    resolved.scope = cliArgs.scope;
-  }
-  if (cliArgs.include_date !== undefined) {
-    resolved.include_date = cliArgs.include_date;
-  }
-
-  return resolved;
+function isNonEmptyArray(v: unknown): boolean {
+  return Array.isArray(v) && v.length > 0;
 }
 
 /**
