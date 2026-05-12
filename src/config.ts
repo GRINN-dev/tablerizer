@@ -136,6 +136,17 @@ export function parseConfigFile(
   return expandConfigEnvVars(raw, undefined, env);
 }
 
+export function parseEnvVars(
+  env: Record<string, string | undefined>,
+): Partial<TablerizerOptions> {
+  const result: Partial<TablerizerOptions> = {};
+  if (env.DATABASE_URL) result.database_url = env.DATABASE_URL;
+  if (env.SCHEMAS) result.schemas = env.SCHEMAS.split(",").map(s => s.trim());
+  if (env.OUTPUT_DIR) result.out = env.OUTPUT_DIR;
+  if (env.ROLES) result.roles = env.ROLES.split(",").map(r => r.trim());
+  return result;
+}
+
 export interface ConfigLayers {
   file?: Partial<TablerizerOptions>;
   env?: Partial<TablerizerOptions>;

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveConfig, parseConfigFile } from "../../src/config.js";
+import { resolveConfig, parseConfigFile, parseEnvVars } from "../../src/config.js";
 
 describe("resolveConfig", () => {
   it("returns valid defaults when given no layers", () => {
@@ -74,5 +74,28 @@ describe("parseConfigFile", () => {
     assert.strictEqual(config.include_date, true);
     assert.strictEqual(config.clean, false);
     assert.strictEqual(config.silent, true);
+  });
+});
+
+describe("parseEnvVars", () => {
+  it("reads known env vars into config", () => {
+    const config = parseEnvVars({
+      DATABASE_URL: "postgres://localhost/db",
+      SCHEMAS: "app_public, app_private",
+      OUTPUT_DIR: "./out",
+      ROLES: "admin, visitor",
+    });
+    assert.strictEqual(config.database_url, "postgres://localhost/db");
+    assert.deepStrictEqual(config.schemas, ["app_public", "app_private"]);
+    assert.strictEqual(config.out, "./out");
+    assert.deepStrictEqual(config.roles, ["admin", "visitor"]);
+  });
+
+  it("ignores missing env vars", () => {
+    const config = parseEnvVars({});
+    assert.strictEqual(config.database_url, undefined);
+    assert.strictEqual(config.schemas, undefined);
+    assert.strictEqual(config.out, undefined);
+    assert.strictEqual(config.roles, undefined);
   });
 });
