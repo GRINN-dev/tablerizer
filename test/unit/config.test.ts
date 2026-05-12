@@ -15,6 +15,38 @@ describe("resolveConfig", () => {
     assert.strictEqual(config.clean, true);
     assert.strictEqual(config.silent, false);
   });
+
+  it("CLI overrides env, env overrides file", () => {
+    const config = resolveConfig({
+      file: { out: "./from-file", database_url: "file-db", schemas: ["file-schema"] },
+      env: { out: "./from-env", database_url: "env-db" },
+      cli: { out: "./from-cli" },
+    });
+    assert.strictEqual(config.out, "./from-cli");
+    assert.strictEqual(config.database_url, "env-db");
+    assert.deepStrictEqual(config.schemas, ["file-schema"]);
+  });
+
+  it("merges role_mappings additively across layers", () => {
+    const config = resolveConfig({
+      file: { role_mappings: { file_role: ":FILE" } },
+      env: { role_mappings: { env_role: ":ENV" } },
+      cli: { role_mappings: { cli_role: ":CLI" } },
+    });
+    assert.deepStrictEqual(config.role_mappings, {
+      file_role: ":FILE",
+      env_role: ":ENV",
+      cli_role: ":CLI",
+    });
+  });
+
+  it("higher layer wins for conflicting role_mappings keys", () => {
+    const config = resolveConfig({
+      file: { role_mappings: { admin: ":FILE_ADMIN" } },
+      cli: { role_mappings: { admin: ":CLI_ADMIN" } },
+    });
+    assert.strictEqual(config.role_mappings!.admin, ":CLI_ADMIN");
+  });
 });
 
 describe("parseConfigFile", () => {
