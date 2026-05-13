@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveConfig, parseConfigFile, parseEnvVars, parseCliArgs, validateConfig } from "../../src/config.js";
+import { resolveConfig, parseConfigFile, parseEnvVars, parseCliArgs, validateConfig, normalizeScope } from "../../src/config.js";
 
 describe("resolveConfig", () => {
   it("returns valid defaults when given no layers", () => {
@@ -165,6 +165,28 @@ describe("parseCliArgs", () => {
     assert.strictEqual(config.schemas, undefined);
     assert.strictEqual(config.out, undefined);
     assert.strictEqual(config.database_url, undefined);
+  });
+});
+
+describe("normalizeScope", () => {
+  it("expands 'all' to every concrete scope", () => {
+    const result = normalizeScope("all");
+    assert.deepStrictEqual(result, ["tables", "functions", "views", "materialized-views"]);
+  });
+
+  it("expands undefined to every concrete scope", () => {
+    const result = normalizeScope(undefined);
+    assert.deepStrictEqual(result, ["tables", "functions", "views", "materialized-views"]);
+  });
+
+  it("wraps a single scope string into an array", () => {
+    const result = normalizeScope("tables");
+    assert.deepStrictEqual(result, ["tables"]);
+  });
+
+  it("passes through an array unchanged", () => {
+    const result = normalizeScope(["tables", "functions"]);
+    assert.deepStrictEqual(result, ["tables", "functions"]);
   });
 });
 

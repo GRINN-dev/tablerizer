@@ -12,6 +12,19 @@ export type ExportScope =
   | "materialized-views"
   | "all";
 
+export const ALL_SCOPES: Exclude<ExportScope, "all">[] = [
+  "tables",
+  "functions",
+  "views",
+  "materialized-views",
+];
+
+export function normalizeScope(scope?: ExportScope | ExportScope[]): Exclude<ExportScope, "all">[] {
+  if (!scope || scope === "all") return [...ALL_SCOPES];
+  if (Array.isArray(scope)) return scope as Exclude<ExportScope, "all">[];
+  return [scope as Exclude<ExportScope, "all">];
+}
+
 export interface TablerizerOptions {
   schemas: string[];
   out?: string;

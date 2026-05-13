@@ -1,7 +1,7 @@
 import { createConnection } from "./database.js";
 import type { DatabaseConnection } from "./database.js";
-import type { TablerizerOptions, ExportScope } from "./config.js";
-import { validateConfig, resolveConfig } from "./config.js";
+import type { TablerizerOptions } from "./config.js";
+import { validateConfig, resolveConfig, normalizeScope } from "./config.js";
 import { generateTableSQL, generateFunctionSQL, applyRoleMappings } from "./generators/index.js";
 import { scanTable, scanFunction } from "./scanner.js";
 import { runExport } from "./orchestrator.js";
@@ -70,7 +70,7 @@ export class Tablerizer {
     return runExport({
       connection: this.connection!,
       schemas: this.options.schemas,
-      scope: this.normalizeScope(this.options.scope),
+      scope: normalizeScope(this.options.scope),
       out: this.options.out || "./tables",
       clean: this.options.clean !== false,
       roles: this.options.roles,
@@ -114,13 +114,4 @@ export class Tablerizer {
     return sql;
   }
 
-  private normalizeScope(scope?: ExportScope | ExportScope[]): ExportScope[] {
-    if (!scope || scope === "all") {
-      return ["tables", "functions", "views", "materialized-views"];
-    }
-    if (Array.isArray(scope)) {
-      return scope;
-    }
-    return [scope];
-  }
 }
