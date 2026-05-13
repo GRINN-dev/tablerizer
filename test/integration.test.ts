@@ -24,3 +24,4 @@ import "./integration/materialized-views.test.js";
 import "./integration/scoping.test.js";
 import "./integration/determinism.test.js";
 import "./integration/configuration.test.js";
+import "./integration/query-grants.test.js";

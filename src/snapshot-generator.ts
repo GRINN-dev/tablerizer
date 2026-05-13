@@ -29,8 +29,8 @@ export async function generateSnapshot(
       );
     }
     case "materialized-view": {
-      const grants = await queries.getMaterializedViewGrants(
-        connection, descriptor.schema, descriptor.name, options.roles,
+      const grants = await queries.getGrants(
+        connection, descriptor.schema, descriptor.name, "table", options.roles,
       );
       const indexes = await queries.getMaterializedViewIndexes(
         connection, descriptor.schema, descriptor.name,

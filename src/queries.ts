@@ -113,32 +113,6 @@ export async function getMaterializedViews(
 }
 
 /**
- * Get grants for a materialized view
- */
-export async function getMaterializedViewGrants(
-  connection: DatabaseConnection,
-  schema: string,
-  matviewName: string,
-  roles?: string[]
-) {
-  const roleFilter = roles ? `AND grantee = ANY($3)` : "";
-  const params = [schema, matviewName];
-  if (roles) {
-    params.push(roles as any);
-  }
-
-  return await connection.query(
-    `
-      SELECT grantor, grantee, privilege_type as privilege, is_grantable::boolean
-      FROM information_schema.table_privileges
-      WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
-      ORDER BY grantee, privilege_type
-      `,
-    params
-  );
-}
-
-/**
  * Get indexes for a materialized view
  */
 export async function getMaterializedViewIndexes(
@@ -212,8 +186,8 @@ export async function getTableData(
     partitionInfo,
     tableComment,
   ] = await Promise.all([
-    getTableGrants(connection, schema, tableName, roles),
-    getColumnGrants(connection, schema, tableName, roles),
+    getGrants(connection, schema, tableName, "table", roles),
+    getGrants(connection, schema, tableName, "column", roles),
     getPolicies(connection, schema, tableName),
     getTriggers(connection, schema, tableName),
     getColumnDefinitions(connection, schema, tableName),
@@ -375,16 +349,29 @@ export async function getPartitionInfo(
   };
 }
 
-export async function getTableGrants(
+export type GrantSource = "table" | "column";
+
+export async function getGrants(
   connection: DatabaseConnection,
   schema: string,
-  tableName: string,
+  objectName: string,
+  source: GrantSource,
   roles?: string[]
 ) {
-  const roleFilter = roles ? `AND grantee = ANY($3)` : "";
-  const params = [schema, tableName];
-  if (roles) {
-    params.push(roles as any);
+  const roleFilter = roles ? `AND grantee = ANY($3::text[])` : "";
+  const params: any[] = [schema, objectName];
+  if (roles) params.push(`{${roles.join(",")}}`);
+
+  if (source === "column") {
+    return await connection.query(
+      `
+      SELECT column_name, grantor, grantee, privilege_type as privilege, is_grantable::boolean
+      FROM information_schema.column_privileges
+      WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
+      ORDER BY column_name, grantee, privilege_type
+      `,
+      params
+    );
   }
 
   return await connection.query(
@@ -393,29 +380,6 @@ export async function getTableGrants(
       FROM information_schema.table_privileges
       WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
       ORDER BY grantee, privilege_type
-      `,
-    params
-  );
-}
-
-export async function getColumnGrants(
-  connection: DatabaseConnection,
-  schema: string,
-  tableName: string,
-  roles?: string[]
-) {
-  const roleFilter = roles ? `AND grantee = ANY($3)` : "";
-  const params = [schema, tableName];
-  if (roles) {
-    params.push(roles as any);
-  }
-
-  return await connection.query(
-    `
-      SELECT column_name, grantor, grantee, privilege_type as privilege, is_grantable::boolean
-      FROM information_schema.column_privileges
-      WHERE table_schema = $1 AND table_name = $2 ${roleFilter}
-      ORDER BY column_name, grantee, privilege_type
       `,
     params
   );
