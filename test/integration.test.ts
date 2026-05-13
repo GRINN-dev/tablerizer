@@ -25,3 +25,4 @@ import "./integration/scoping.test.js";
 import "./integration/determinism.test.js";
 import "./integration/configuration.test.js";
 import "./integration/query-grants.test.js";
+import "./integration/single-object-export.test.js";

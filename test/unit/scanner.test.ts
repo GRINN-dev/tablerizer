@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { scan, type ObjectDescriptor } from "../../src/scanner.js";
+import { scan, scanTable, scanFunction, type ObjectDescriptor } from "../../src/scanner.js";
 import type { DatabaseConnection, FunctionInfo, MaterializedViewInfo } from "../../src/database.js";
 
 function mockConnection(data: {
@@ -167,5 +167,41 @@ describe("scan", () => {
     assert.equal(result.length, 2);
     assert.equal(result[0].schema, "app_public");
     assert.equal(result[1].schema, "app_private");
+  });
+});
+
+describe("scanFunction", () => {
+  it("returns FunctionData with roles passed through as grantRoles", async () => {
+    const conn = mockConnection({
+      functions: [fakeFunctionInfo("authenticate", "email text, password text")],
+    });
+
+    const data = await scanFunction(conn, "app_public", "authenticate", ["app_user", "admin"]);
+
+    assert.equal(data.info.function_name, "authenticate");
+    assert.equal(data.info.function_arguments, "email text, password text");
+    assert.deepStrictEqual(data.grantRoles, ["app_user", "admin"]);
+  });
+
+  it("throws when function name is not found", async () => {
+    const conn = mockConnection({ functions: [fakeFunctionInfo("authenticate")] });
+
+    await assert.rejects(
+      () => scanFunction(conn, "app_public", "nonexistent"),
+      { message: "Function app_public.nonexistent not found" },
+    );
+  });
+});
+
+describe("scanTable", () => {
+  it("returns hydrated TableData for a named table", async () => {
+    const conn = mockConnection({});
+    const data = await scanTable(conn, "app_public", "users");
+
+    assert.equal(data.table, "users");
+    assert.equal(data.owner, "postgres");
+    assert.ok(Array.isArray(data.column_definitions));
+    assert.equal(data.column_definitions.length, 1);
+    assert.equal(data.column_definitions[0].column_name, "id");
   });
 });

@@ -135,3 +135,26 @@ export async function scan(
 
   return parallel(hydrationFns, HYDRATION_CONCURRENCY);
 }
+
+export async function scanTable(
+  connection: DatabaseConnection,
+  schema: string,
+  tableName: string,
+  roles?: string[],
+): Promise<TableData> {
+  return queries.getTableData(connection, schema, tableName, roles);
+}
+
+export async function scanFunction(
+  connection: DatabaseConnection,
+  schema: string,
+  functionName: string,
+  roles?: string[],
+): Promise<FunctionData> {
+  const functions = await queries.getFunctions(connection, schema);
+  const func = functions.find((f) => f.function_name === functionName);
+  if (!func) {
+    throw new Error(`Function ${schema}.${functionName} not found`);
+  }
+  return { info: func, grantRoles: roles ?? [] };
+}

@@ -1,11 +1,9 @@
-import fs from "fs/promises";
-import path from "path";
 import { createConnection } from "./database.js";
 import type { DatabaseConnection } from "./database.js";
 import type { TablerizerOptions, ExportScope } from "./config.js";
 import { validateConfig, resolveConfig } from "./config.js";
 import { generateTableSQL, generateFunctionSQL, applyRoleMappings } from "./generators/index.js";
-import * as queries from "./queries.js";
+import { scanTable, scanFunction } from "./scanner.js";
 import { runExport } from "./orchestrator.js";
 
 export interface ExportResult {
@@ -82,91 +80,38 @@ export class Tablerizer {
     });
   }
 
-  async exportTable(
-    schema: string,
-    tableName: string,
-    outputPath?: string
-  ): Promise<string> {
+  async exportTable(schema: string, tableName: string): Promise<string> {
     validateConfig(this.options);
 
     if (!this.connection) {
       await this.connect();
     }
 
-    const tableData = await queries.getTableData(this.connection!, schema, tableName, this.options.roles);
-    let sqlContent = generateTableSQL(schema, tableData, this.options.include_date);
+    const tableData = await scanTable(this.connection!, schema, tableName, this.options.roles);
+    let sql = generateTableSQL(schema, tableData, this.options.include_date);
 
     if (this.options.role_mappings && Object.keys(this.options.role_mappings).length > 0) {
-      sqlContent = applyRoleMappings(sqlContent, this.options.role_mappings);
+      sql = applyRoleMappings(sql, this.options.role_mappings);
     }
 
-    if (outputPath) {
-      await fs.mkdir(path.dirname(outputPath), { recursive: true });
-      await fs.writeFile(outputPath, sqlContent);
-    }
-
-    return sqlContent;
+    return sql;
   }
 
-  async exportFunction(
-    schema: string,
-    functionName: string,
-    outputPath?: string
-  ): Promise<string> {
+  async exportFunction(schema: string, functionName: string): Promise<string> {
     validateConfig(this.options);
 
     if (!this.connection) {
       await this.connect();
     }
 
-    const functions = await queries.getFunctions(this.connection!, schema);
-    const func = functions.find((f) => f.function_name === functionName);
-
-    if (!func) {
-      throw new Error(`Function ${schema}.${functionName} not found`);
-    }
-
-    let sqlContent = generateFunctionSQL(
-      { info: func, grantRoles: this.options.roles ?? [] },
-      this.options.include_date,
-    );
+    const functionData = await scanFunction(this.connection!, schema, functionName, this.options.roles);
+    let sql = generateFunctionSQL(functionData, this.options.include_date);
 
     if (this.options.role_mappings && Object.keys(this.options.role_mappings).length > 0) {
-      sqlContent = applyRoleMappings(sqlContent, this.options.role_mappings);
+      sql = applyRoleMappings(sql, this.options.role_mappings);
     }
 
-    if (outputPath) {
-      await fs.mkdir(path.dirname(outputPath), { recursive: true });
-      await fs.writeFile(outputPath, sqlContent);
-    }
-
-    return sqlContent;
-  }
-
-  async exportFunctions(
-    progressCallback?: ProgressCallback
-  ): Promise<ExportResult> {
-    const originalScope = this.options.scope;
-    this.options.scope = "functions";
-
-    try {
-      return await this.export(progressCallback);
-    } finally {
-      this.options.scope = originalScope;
-    }
-  }
-
-  async exportTables(
-    progressCallback?: ProgressCallback
-  ): Promise<ExportResult> {
-    const originalScope = this.options.scope;
-    this.options.scope = "tables";
-
-    try {
-      return await this.export(progressCallback);
-    } finally {
-      this.options.scope = originalScope;
-    }
+    return sql;
   }
 
   private normalizeScope(scope?: ExportScope | ExportScope[]): ExportScope[] {
