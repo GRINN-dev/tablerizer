@@ -1,6 +1,5 @@
-import type { DatabaseConnection, FunctionInfo, MaterializedViewInfo } from "./database.js";
+import type { DatabaseConnection, FunctionInfo, MaterializedViewInfo, TableData } from "./database.js";
 import type { ExportScope } from "./config.js";
-import type { TableData } from "./generators/types.js";
 import * as queries from "./queries.js";
 
 export interface FunctionData {

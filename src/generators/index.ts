@@ -1,5 +1,5 @@
 export { escapeIdent, sectionHeader, escapeComment, applyRoleMappings } from "./utils.js";
-export type { TableData } from "./types.js";
+export type { TableData } from "../database.js";
 export { generateDropTableSQL, generateCreateTableSQL, generateOwnerSQL } from "./table-ddl.js";
 export { generateConstraintsSQL } from "./constraints.js";
 export { generateIndexesSQL } from "./indexes.js";

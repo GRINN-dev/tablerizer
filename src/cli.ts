@@ -238,7 +238,7 @@ export function displayProcessingStatus(silent?: boolean): void {
  */
 export async function runCLI(): Promise<void> {
   const { Tablerizer } = await import("./index.js");
-  const { parseCliArgs, parseEnvVars, parseConfigFile, resolveConfig, findConfigFile, loadConfig } = await import("./config.js");
+  const { parseCliArgs, parseEnvVars, parseConfigFile, resolveConfig, findConfigFile } = await import("./config.js");
   const fs = await import("fs");
 
   try {

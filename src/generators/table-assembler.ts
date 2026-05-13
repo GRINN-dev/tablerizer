@@ -1,5 +1,5 @@
 import { sectionHeader } from "./utils.js";
-import type { TableData } from "./types.js";
+import type { TableData } from "../database.js";
 import { generateDropTableSQL, generateCreateTableSQL, generateOwnerSQL } from "./table-ddl.js";
 import { generateConstraintsSQL } from "./constraints.js";
 import { generateIndexesSQL } from "./indexes.js";

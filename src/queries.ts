@@ -11,8 +11,8 @@ import type {
   IndexDefinition,
   PartitionInfo,
   MaterializedViewInfo,
+  TableData,
 } from "./database.js";
-import type { TableData } from "./generators/index.js";
 
 /**
  * Get list of tables in a schema
