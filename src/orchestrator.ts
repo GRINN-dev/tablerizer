@@ -4,7 +4,7 @@ import type { DatabaseConnection } from "./database.js";
 import type { ExportScope } from "./config.js";
 import type { ExportResult, ProgressCallback } from "./tablerizer.js";
 import { scan } from "./scanner.js";
-import { generateSnapshot } from "./snapshot-generator.js";
+import { generateTableSQL, generateFunctionSQL, generateMaterializedViewSQL, applyRoleMappings } from "./generators/index.js";
 import { writeSnapshots } from "./writer.js";
 
 export interface ExportPipelineOptions {
@@ -38,7 +38,7 @@ export async function runExport(options: ExportPipelineOptions): Promise<ExportR
 
   await fs.mkdir(baseOutputDir, { recursive: true });
 
-  const descriptors = await scan(options.connection, options.schemas, options.scope);
+  const descriptors = await scan(options.connection, options.schemas, options.scope, options.roles);
 
   const files: ExportResult["files"] = [];
   let tableFiles = 0;
@@ -57,11 +57,22 @@ export async function runExport(options: ExportPipelineOptions): Promise<ExportR
       });
     }
 
-    const sql = await generateSnapshot(options.connection, descriptor, {
-      roles: options.roles,
-      role_mappings: options.role_mappings,
-      include_date: options.include_date,
-    });
+    let sql: string;
+    switch (descriptor.objectType) {
+      case "table":
+        sql = generateTableSQL(descriptor.schema, descriptor.data, options.include_date);
+        break;
+      case "function":
+        sql = generateFunctionSQL(descriptor.data, options.include_date);
+        break;
+      case "materialized-view":
+        sql = generateMaterializedViewSQL(descriptor.data, options.include_date);
+        break;
+    }
+
+    if (options.role_mappings && Object.keys(options.role_mappings).length > 0) {
+      sql = applyRoleMappings(sql, options.role_mappings);
+    }
 
     const dir = OBJECT_TYPE_DIR[descriptor.objectType];
     let fileName = `${descriptor.name}.sql`;

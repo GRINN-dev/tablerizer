@@ -7,14 +7,45 @@ function mockConnection(data: {
   tables?: { table_name: string }[];
   functions?: Partial<FunctionInfo>[];
   materializedViews?: Partial<MaterializedViewInfo>[];
+  tableInfo?: Record<string, any>;
+  matviewGrants?: any[];
+  matviewIndexes?: any[];
 }): DatabaseConnection {
   return {
     connect: async () => {},
     disconnect: async () => {},
-    query: async (text: string) => {
-      if (text.includes("relkind = 'r'")) return data.tables ?? [];
+    query: async (text: string, params?: any[]) => {
+      // getTables listing
+      if (text.includes("relname as table_name") && !text.includes("pg_index")) {
+        return data.tables ?? [];
+      }
+      // getFunctions listing
       if (text.includes("pg_proc")) return data.functions ?? [];
-      if (text.includes("relkind = 'm'")) return data.materializedViews ?? [];
+      // getMaterializedViews listing
+      if (text.includes("relkind = 'm'") && !text.includes("pg_index")) {
+        return data.materializedViews ?? [];
+      }
+      // getTableData - table info query
+      if (text.includes("relrowsecurity")) {
+        return [{
+          oid: 1, owner: "postgres", relrowsecurity: false,
+          relforcerowsecurity: false, relkind: "r",
+        }];
+      }
+      // getColumnDefinitions
+      if (text.includes("pg_attribute")) {
+        return [{
+          column_name: "id", data_type: "integer", not_null: true,
+          column_default: null, comment: null, ordinal_position: 1,
+        }];
+      }
+      // getMaterializedViewIndexes
+      if (text.includes("pg_index") && text.includes("relkind = 'm'")) {
+        return data.matviewIndexes ?? [];
+      }
+      // getGrants - table_privileges
+      if (text.includes("table_privileges")) return data.matviewGrants ?? [];
+      // Default empty for grants, policies, triggers, constraints, indexes, comments
       return [];
     },
   };
@@ -49,20 +80,23 @@ function fakeMatviewInfo(name: string): MaterializedViewInfo {
 }
 
 describe("scan", () => {
-  it("returns table descriptors when scope includes tables", async () => {
+  it("returns hydrated table descriptors when scope includes tables", async () => {
     const conn = mockConnection({
       tables: [{ table_name: "users" }, { table_name: "posts" }],
     });
 
     const result = await scan(conn, ["app_public"], ["tables"]);
 
-    assert.deepStrictEqual(result, [
-      { schema: "app_public", name: "users", objectType: "table" },
-      { schema: "app_public", name: "posts", objectType: "table" },
-    ]);
+    assert.equal(result.length, 2);
+    assert.equal(result[0].objectType, "table");
+    assert.equal(result[0].name, "users");
+    assert.equal(result[0].schema, "app_public");
+    const first = result[0] as Extract<ObjectDescriptor, { objectType: "table" }>;
+    assert.equal(first.data.table, "users");
+    assert.equal(first.data.owner, "postgres");
   });
 
-  it("returns function descriptors with functionInfo when scope includes functions", async () => {
+  it("returns function descriptors with FunctionData when scope includes functions", async () => {
     const auth = fakeFunctionInfo("authenticate", "email text, password text");
     const userId = fakeFunctionInfo("current_user_id");
     const conn = mockConnection({ functions: [auth, userId] });
@@ -73,19 +107,41 @@ describe("scan", () => {
     assert.equal(result[0].objectType, "function");
     assert.equal(result[0].name, "authenticate");
     const first = result[0] as Extract<ObjectDescriptor, { objectType: "function" }>;
-    assert.equal(first.functionInfo.function_arguments, "email text, password text");
+    assert.equal(first.data.info.function_arguments, "email text, password text");
+    assert.deepStrictEqual(first.data.grantRoles, []);
   });
 
-  it("returns materialized view descriptors with matviewInfo", async () => {
+  it("passes roles to function descriptors as grantRoles", async () => {
+    const conn = mockConnection({ functions: [fakeFunctionInfo("do_thing")] });
+
+    const result = await scan(conn, ["app_public"], ["functions"], ["app_user", "admin"]);
+
+    const first = result[0] as Extract<ObjectDescriptor, { objectType: "function" }>;
+    assert.deepStrictEqual(first.data.grantRoles, ["app_user", "admin"]);
+  });
+
+  it("returns materialized view descriptors with grants and indexes", async () => {
     const stats = fakeMatviewInfo("user_stats");
-    const conn = mockConnection({ materializedViews: [stats] });
+    const conn = mockConnection({
+      materializedViews: [stats],
+      matviewGrants: [
+        { grantor: "postgres", grantee: "app_user", privilege: "SELECT", is_grantable: false },
+      ],
+      matviewIndexes: [
+        { index_name: "idx_stats", index_definition: "CREATE INDEX idx_stats ON app_public.user_stats (id)" },
+      ],
+    });
 
     const result = await scan(conn, ["app_public"], ["materialized-views"]);
 
     assert.equal(result.length, 1);
     assert.equal(result[0].objectType, "materialized-view");
     const first = result[0] as Extract<ObjectDescriptor, { objectType: "materialized-view" }>;
-    assert.equal(first.matviewInfo.matview_name, "user_stats");
+    assert.equal(first.data.info.matview_name, "user_stats");
+    assert.equal(first.data.grants.length, 1);
+    assert.equal(first.data.grants[0].grantee, "app_user");
+    assert.equal(first.data.indexes.length, 1);
+    assert.equal(first.data.indexes[0].index_name, "idx_stats");
   });
 
   it("only returns object types included in scope", async () => {

@@ -1,4 +1,4 @@
-import { sectionHeader, applyRoleMappings } from "./utils.js";
+import { sectionHeader } from "./utils.js";
 import type { TableData } from "./types.js";
 import { generateDropTableSQL, generateCreateTableSQL, generateOwnerSQL } from "./table-ddl.js";
 import { generateConstraintsSQL } from "./constraints.js";
@@ -26,7 +26,6 @@ import { generateTriggersSQL } from "./triggers.js";
 export function generateTableSQL(
   schema: string,
   tableData: TableData,
-  roleMappings?: Record<string, string>,
   includeDate: boolean = false,
 ): string {
   const tableName = tableData.table;
@@ -168,12 +167,5 @@ export function generateTableSQL(
     sections.push("");
   }
 
-  let content = sections.join("\n");
-
-  // Apply role mappings if provided
-  if (roleMappings && Object.keys(roleMappings).length > 0) {
-    content = applyRoleMappings(content, roleMappings);
-  }
-
-  return content;
+  return sections.join("\n");
 }

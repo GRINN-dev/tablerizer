@@ -1,15 +1,11 @@
-import type { FunctionInfo } from "../database.js";
-import { escapeIdent, applyRoleMappings } from "./utils.js";
+import type { FunctionData } from "../scanner.js";
+import { escapeIdent } from "./utils.js";
 
-/**
- * Generate a complete SQL file content for a function
- */
 export function generateFunctionSQL(
-  func: FunctionInfo,
-  roles?: string[],
-  roleMappings?: Record<string, string>,
+  data: FunctionData,
   includeDate: boolean = false,
 ): string {
+  const func = data.info;
   const lines: string[] = [];
 
   lines.push(`-- ========================================`);
@@ -24,13 +20,8 @@ export function generateFunctionSQL(
   if (func.comment) {
     lines.push(`-- Comment: ${func.comment}`);
   }
-  if (roles && roles.length > 0) {
-    // Apply role mappings to roles in header for deterministic output
-    const displayRoles =
-      roleMappings && Object.keys(roleMappings).length > 0
-        ? roles.map((role) => roleMappings[role] || role)
-        : roles;
-    lines.push(`-- Grants for roles: ${displayRoles.join(", ")}`);
+  if (data.grantRoles.length > 0) {
+    lines.push(`-- Grants for roles: ${[...data.grantRoles].sort().join(", ")}`);
   }
   lines.push("");
 
@@ -51,10 +42,10 @@ export function generateFunctionSQL(
   }
 
   // Add GRANT EXECUTE statements for specified roles
-  if (roles && roles.length > 0) {
+  if (data.grantRoles.length > 0) {
     lines.push("");
     lines.push("-- Grant execution permissions");
-    const sortedRoles = [...roles].sort();
+    const sortedRoles = [...data.grantRoles].sort();
     for (const role of sortedRoles) {
       lines.push(
         `GRANT EXECUTE ON FUNCTION ${func.schema_name}.${func.function_name}(${func.function_arguments}) TO ${escapeIdent(role)};`,
@@ -62,11 +53,5 @@ export function generateFunctionSQL(
     }
   }
 
-  let content = lines.join("\n");
-
-  if (roleMappings && Object.keys(roleMappings).length > 0) {
-    content = applyRoleMappings(content, roleMappings);
-  }
-
-  return content;
+  return lines.join("\n");
 }

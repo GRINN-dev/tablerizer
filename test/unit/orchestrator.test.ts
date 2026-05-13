@@ -149,6 +149,50 @@ describe("runExport", () => {
     assert.ok(fileNames.includes("authenticate_1.sql"));
   });
 
+  it("applies role mappings to generated SQL", async () => {
+    const conn: DatabaseConnection = {
+      connect: async () => {},
+      disconnect: async () => {},
+      query: async (text: string) => {
+        if (text.includes("relname as table_name") && !text.includes("pg_index")) {
+          return [{ table_name: "users" }];
+        }
+        if (text.includes("relrowsecurity")) {
+          return [{
+            oid: 1, owner: "postgres", relrowsecurity: false,
+            relforcerowsecurity: false, relkind: "r",
+          }];
+        }
+        if (text.includes("pg_attribute")) {
+          return [{
+            column_name: "id", data_type: "integer", not_null: true,
+            column_default: null, comment: null, ordinal_position: 1,
+          }];
+        }
+        if (text.includes("table_privileges")) {
+          return [{
+            grantor: "postgres", grantee: "visitor",
+            privilege: "SELECT", is_grantable: false,
+          }];
+        }
+        return [];
+      },
+    };
+
+    const result = await runExport({
+      connection: conn,
+      schemas: ["app_public"],
+      scope: ["tables"],
+      out: tmpDir,
+      clean: false,
+      role_mappings: { visitor: ":VISITOR" },
+    });
+
+    const filePath = result.files[0].filePath;
+    const content = await fs.readFile(filePath, "utf-8");
+    assert.ok(content.includes(":VISITOR"));
+  });
+
   it("cleans output directory when clean is true", async () => {
     // Create a pre-existing file
     const staleDir = path.join(tmpDir, "stale");

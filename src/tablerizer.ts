@@ -1,13 +1,10 @@
-/**
- * Main Tablerizer class - PostgreSQL Table Export Wizard
- */
-
 import fs from "fs/promises";
 import path from "path";
 import { createConnection } from "./database.js";
+import type { DatabaseConnection } from "./database.js";
 import type { TablerizerOptions, ExportScope } from "./config.js";
 import { validateConfig, resolveConfig } from "./config.js";
-import { generateTableSQL, generateFunctionSQL } from "./generators/index.js";
+import { generateTableSQL, generateFunctionSQL, applyRoleMappings } from "./generators/index.js";
 import * as queries from "./queries.js";
 import { runExport } from "./orchestrator.js";
 
@@ -36,9 +33,6 @@ export interface ExportProgress {
 
 export type ProgressCallback = (progress: ExportProgress) => void;
 
-/**
- * Main Tablerizer class for exporting PostgreSQL table permissions and schemas
- */
 export class Tablerizer {
   private connection: DatabaseConnection | null = null;
   private options: TablerizerOptions;
@@ -51,9 +45,6 @@ export class Tablerizer {
     this.options = resolveConfig({ file: this.options, cli: options });
   }
 
-  /**
-   * Connect to the database
-   */
   async connect(connectionString?: string): Promise<void> {
     const dbUrl = connectionString || this.options.database_url;
     if (!dbUrl) {
@@ -64,9 +55,6 @@ export class Tablerizer {
     await this.connection.connect();
   }
 
-  /**
-   * Disconnect from the database
-   */
   async disconnect(): Promise<void> {
     if (this.connection) {
       await this.connection.disconnect();
@@ -74,9 +62,6 @@ export class Tablerizer {
     }
   }
 
-  /**
-   * Export tables and/or functions for all configured schemas
-   */
   async export(progressCallback?: ProgressCallback): Promise<ExportResult> {
     validateConfig(this.options);
 
@@ -97,9 +82,6 @@ export class Tablerizer {
     });
   }
 
-  /**
-   * Export a single table
-   */
   async exportTable(
     schema: string,
     tableName: string,
@@ -111,18 +93,13 @@ export class Tablerizer {
       await this.connect();
     }
 
-    // Get table data
     const tableData = await queries.getTableData(this.connection!, schema, tableName, this.options.roles);
+    let sqlContent = generateTableSQL(schema, tableData, this.options.include_date);
 
-    // Generate SQL content
-    const sqlContent = generateTableSQL(
-      schema,
-      tableData,
-      this.options.role_mappings,
-      this.options.include_date
-    );
+    if (this.options.role_mappings && Object.keys(this.options.role_mappings).length > 0) {
+      sqlContent = applyRoleMappings(sqlContent, this.options.role_mappings);
+    }
 
-    // Write file if output path is provided
     if (outputPath) {
       await fs.mkdir(path.dirname(outputPath), { recursive: true });
       await fs.writeFile(outputPath, sqlContent);
@@ -131,9 +108,6 @@ export class Tablerizer {
     return sqlContent;
   }
 
-  /**
-   * Export a single function
-   */
   async exportFunction(
     schema: string,
     functionName: string,
@@ -145,7 +119,6 @@ export class Tablerizer {
       await this.connect();
     }
 
-    // Get function data
     const functions = await queries.getFunctions(this.connection!, schema);
     const func = functions.find((f) => f.function_name === functionName);
 
@@ -153,15 +126,15 @@ export class Tablerizer {
       throw new Error(`Function ${schema}.${functionName} not found`);
     }
 
-    // Generate SQL content
-    const sqlContent = generateFunctionSQL(
-      func,
-      this.options.roles,
-      this.options.role_mappings,
-      this.options.include_date
+    let sqlContent = generateFunctionSQL(
+      { info: func, grantRoles: this.options.roles ?? [] },
+      this.options.include_date,
     );
 
-    // Write file if output path is provided
+    if (this.options.role_mappings && Object.keys(this.options.role_mappings).length > 0) {
+      sqlContent = applyRoleMappings(sqlContent, this.options.role_mappings);
+    }
+
     if (outputPath) {
       await fs.mkdir(path.dirname(outputPath), { recursive: true });
       await fs.writeFile(outputPath, sqlContent);
@@ -170,9 +143,6 @@ export class Tablerizer {
     return sqlContent;
   }
 
-  /**
-   * Export functions only (convenience method)
-   */
   async exportFunctions(
     progressCallback?: ProgressCallback
   ): Promise<ExportResult> {
@@ -186,9 +156,6 @@ export class Tablerizer {
     }
   }
 
-  /**
-   * Export tables only (convenience method)
-   */
   async exportTables(
     progressCallback?: ProgressCallback
   ): Promise<ExportResult> {
@@ -202,9 +169,6 @@ export class Tablerizer {
     }
   }
 
-  /**
-   * Normalize scope configuration to array format
-   */
   private normalizeScope(scope?: ExportScope | ExportScope[]): ExportScope[] {
     if (!scope || scope === "all") {
       return ["tables", "functions", "views", "materialized-views"];
