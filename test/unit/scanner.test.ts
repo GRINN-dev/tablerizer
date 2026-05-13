@@ -25,7 +25,7 @@ function mockConnection(data: {
       if (text.includes("relkind = 'm'") && !text.includes("pg_index")) {
         return data.materializedViews ?? [];
       }
-      // getTableData - table info query
+      // getTableInfo - table info query
       if (text.includes("relrowsecurity")) {
         return [{
           oid: 1, owner: "postgres", relrowsecurity: false,
@@ -203,5 +203,21 @@ describe("scanTable", () => {
     assert.ok(Array.isArray(data.column_definitions));
     assert.equal(data.column_definitions.length, 1);
     assert.equal(data.column_definitions[0].column_name, "id");
+  });
+
+  it("throws when table is not found", async () => {
+    const conn: DatabaseConnection = {
+      connect: async () => {},
+      disconnect: async () => {},
+      query: async (text: string) => {
+        if (text.includes("relrowsecurity")) return [];
+        return [];
+      },
+    };
+
+    await assert.rejects(
+      () => scanTable(conn, "app_public", "nonexistent"),
+      { message: "Table app_public.nonexistent not found" },
+    );
   });
 });

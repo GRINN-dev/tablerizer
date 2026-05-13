@@ -19,7 +19,7 @@ function mockConnection(data: {
       if (text.includes("relname as table_name") && !text.includes("pg_index")) {
         return data.tables ?? [];
       }
-      // getTableData - table info query
+      // getTableInfo - table info query
       if (text.includes("relrowsecurity")) {
         return [{
           oid: 1, owner: "postgres", relrowsecurity: false,

@@ -11,7 +11,6 @@ import type {
   IndexDefinition,
   PartitionInfo,
   MaterializedViewInfo,
-  TableData,
 } from "./database.js";
 
 /**
@@ -141,23 +140,20 @@ export async function getMaterializedViewIndexes(
   );
 }
 
-/**
- * Get comprehensive table data including DDL, RBAC, RLS, triggers, constraints, etc.
- */
-export async function getTableData(
+export interface TableInfo {
+  oid: number;
+  owner: string;
+  relrowsecurity: boolean;
+  relforcerowsecurity: boolean;
+  relkind: string;
+}
+
+export async function getTableInfo(
   connection: DatabaseConnection,
   schema: string,
   tableName: string,
-  roles?: string[]
-): Promise<TableData> {
-  // Get basic table info (handles both ordinary and partitioned tables)
-  const tableInfo = await connection.query<{
-    oid: number;
-    owner: string;
-    relrowsecurity: boolean;
-    relforcerowsecurity: boolean;
-    relkind: string;
-  }>(
+): Promise<TableInfo | null> {
+  const rows = await connection.query<TableInfo>(
     `
       SELECT c.oid, r.rolname as owner, c.relrowsecurity, c.relforcerowsecurity, c.relkind
       FROM pg_class c
@@ -165,59 +161,9 @@ export async function getTableData(
       JOIN pg_roles r ON r.oid = c.relowner
       WHERE (c.relkind = 'r' OR c.relkind = 'p') AND n.nspname = $1 AND c.relname = $2
       `,
-    [schema, tableName]
+    [schema, tableName],
   );
-
-  if (tableInfo.length === 0) {
-    throw new Error(`Table ${schema}.${tableName} not found`);
-  }
-
-  const table = tableInfo[0];
-
-  // Gather all data in parallel for performance
-  const [
-    tableGrants,
-    columnGrants,
-    policies,
-    triggers,
-    columnDefinitions,
-    constraintDefinitions,
-    indexDefinitions,
-    partitionInfo,
-    tableComment,
-  ] = await Promise.all([
-    getGrants(connection, schema, tableName, "table", roles),
-    getGrants(connection, schema, tableName, "column", roles),
-    getPolicies(connection, schema, tableName),
-    getTriggers(connection, schema, tableName),
-    getColumnDefinitions(connection, schema, tableName),
-    getConstraintDefinitions(connection, schema, tableName),
-    getIndexDefinitions(connection, schema, tableName),
-    table.relkind === "p"
-      ? getPartitionInfo(connection, schema, tableName)
-      : Promise.resolve(null),
-    getTableComment(connection, schema, tableName),
-  ]);
-
-  return {
-    table: tableName,
-    owner: table.owner,
-    rls: {
-      enabled: table.relrowsecurity,
-      force: table.relforcerowsecurity,
-      policies,
-    },
-    rbac: {
-      table_grants: tableGrants,
-      column_grants: columnGrants,
-    },
-    triggers,
-    column_definitions: columnDefinitions,
-    constraint_definitions: constraintDefinitions,
-    index_definitions: indexDefinitions,
-    partition_info: partitionInfo,
-    comment: tableComment,
-  };
+  return rows[0] ?? null;
 }
 
 /**

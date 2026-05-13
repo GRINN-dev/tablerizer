@@ -83,8 +83,8 @@ export async function scan(
   const listings = await Promise.all(listingPromises);
 
   // Phase 2: Hydrate objects with bounded concurrency
-  // Each table hydration fires 9 queries internally (getTableData uses Promise.all),
-  // so HYDRATION_CONCURRENCY of 5 means ~45 concurrent queries at peak.
+  // Each table hydration fires 9 parallel sub-queries via scanTable,
+  // so HYDRATION_CONCURRENCY keeps total concurrent queries bounded.
   const hydrationFns: (() => Promise<ObjectDescriptor>)[] = [];
 
   for (const listing of listings) {
@@ -94,7 +94,7 @@ export async function scan(
           const schema = listing.schema;
           const name = t.table_name;
           hydrationFns.push(() =>
-            queries.getTableData(connection, schema, name, roles)
+            scanTable(connection, schema, name, roles)
               .then(data => ({ schema, name, objectType: "table" as const, data })),
           );
         }
@@ -141,7 +141,54 @@ export async function scanTable(
   tableName: string,
   roles?: string[],
 ): Promise<TableData> {
-  return queries.getTableData(connection, schema, tableName, roles);
+  const table = await queries.getTableInfo(connection, schema, tableName);
+  if (!table) {
+    throw new Error(`Table ${schema}.${tableName} not found`);
+  }
+
+  const [
+    tableGrants,
+    columnGrants,
+    policies,
+    triggers,
+    columnDefinitions,
+    constraintDefinitions,
+    indexDefinitions,
+    partitionInfo,
+    tableComment,
+  ] = await Promise.all([
+    queries.getGrants(connection, schema, tableName, "table", roles),
+    queries.getGrants(connection, schema, tableName, "column", roles),
+    queries.getPolicies(connection, schema, tableName),
+    queries.getTriggers(connection, schema, tableName),
+    queries.getColumnDefinitions(connection, schema, tableName),
+    queries.getConstraintDefinitions(connection, schema, tableName),
+    queries.getIndexDefinitions(connection, schema, tableName),
+    table.relkind === "p"
+      ? queries.getPartitionInfo(connection, schema, tableName)
+      : Promise.resolve(null),
+    queries.getTableComment(connection, schema, tableName),
+  ]);
+
+  return {
+    table: tableName,
+    owner: table.owner,
+    rls: {
+      enabled: table.relrowsecurity,
+      force: table.relforcerowsecurity,
+      policies,
+    },
+    rbac: {
+      table_grants: tableGrants,
+      column_grants: columnGrants,
+    },
+    triggers,
+    column_definitions: columnDefinitions,
+    constraint_definitions: constraintDefinitions,
+    index_definitions: indexDefinitions,
+    partition_info: partitionInfo,
+    comment: tableComment,
+  };
 }
 
 export async function scanFunction(
