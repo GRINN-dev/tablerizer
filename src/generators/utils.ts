@@ -1,8 +1,6 @@
 export function escapeIdent(name: string): string {
-  if (name.includes(" ") || name.includes("-") || name.includes(".")) {
-    return `"${name}"`;
-  }
-  return name;
+  if (/^[a-z_][a-z0-9_]*$/.test(name)) return name;
+  return `"${name}"`;
 }
 
 export function sectionHeader(title: string): string[] {

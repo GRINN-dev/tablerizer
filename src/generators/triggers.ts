@@ -39,10 +39,17 @@ export function generateTriggersSQL(
   >();
 
   for (const trigger of triggers) {
-    const groupKey = `${trigger.trigger_name}|${trigger.action_timing}|${trigger.action_orientation}|${trigger.action_statement}|${trigger.action_condition || ""}`;
+    const groupKey = JSON.stringify([
+      trigger.trigger_name,
+      trigger.action_timing,
+      trigger.action_orientation,
+      trigger.action_statement,
+      trigger.action_condition,
+    ]);
 
-    if (triggerGroups.has(groupKey)) {
-      triggerGroups.get(groupKey)!.events.push(trigger.event_manipulation);
+    let group = triggerGroups.get(groupKey);
+    if (group) {
+      group.events.push(trigger.event_manipulation);
     } else {
       triggerGroups.set(groupKey, {
         trigger_name: trigger.trigger_name,

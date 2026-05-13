@@ -37,4 +37,14 @@ describe("generateTriggersSQL", () => {
     const result = join(generateTriggersSQL("s", "t", withCond));
     assert.match(result, /WHEN \(OLD\.x IS DISTINCT FROM NEW\.x\)/);
   });
+
+  it("should group correctly when action_condition contains pipe characters", () => {
+    const withPipe = [
+      { trigger_name: "trg", action_timing: "BEFORE", event_manipulation: "INSERT", action_orientation: "ROW", action_statement: "EXECUTE FUNCTION fn()", action_condition: "NEW.status = 'a|b'", action_order: 1 },
+      { trigger_name: "trg", action_timing: "BEFORE", event_manipulation: "UPDATE", action_orientation: "ROW", action_statement: "EXECUTE FUNCTION fn()", action_condition: "NEW.status = 'a|b'", action_order: 1 },
+    ];
+    const result = join(generateTriggersSQL("s", "t", withPipe));
+    assert.match(result, /BEFORE INSERT OR UPDATE/);
+    assert.equal(result.match(/CREATE TRIGGER/g)?.length, 1, "should produce exactly one CREATE TRIGGER");
+  });
 });
