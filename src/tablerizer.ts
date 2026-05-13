@@ -4,17 +4,12 @@
 
 import fs from "fs/promises";
 import path from "path";
-import type { DatabaseConnection } from "./database.js";
 import { createConnection } from "./database.js";
 import type { TablerizerOptions, ExportScope } from "./config.js";
 import { validateConfig, resolveConfig } from "./config.js";
-import {
-  generateTableSQL,
-  generateFunctionSQL,
-  generateMaterializedViewSQL,
-  applyRoleMappings,
-} from "./generators/index.js";
+import { generateTableSQL, generateFunctionSQL } from "./generators/index.js";
 import * as queries from "./queries.js";
+import { runExport } from "./orchestrator.js";
 
 export interface ExportResult {
   schemas: string[];
@@ -40,15 +35,6 @@ export interface ExportProgress {
 }
 
 export type ProgressCallback = (progress: ExportProgress) => void;
-
-/**
- * Utility function for conditional logging
- */
-function conditionalLog(message: string, silent: boolean): void {
-  if (!silent) {
-    console.log(message);
-  }
-}
 
 /**
  * Main Tablerizer class for exporting PostgreSQL table permissions and schemas
@@ -98,222 +84,17 @@ export class Tablerizer {
       await this.connect();
     }
 
-    const baseOutputDir = this.options.out || "./tables";
-    const files: ExportResult["files"] = [];
-    let totalFiles = 0;
-    let tableFiles = 0;
-    let functionFiles = 0;
-    let materializedViewFiles = 0;
-
-    // Determine what to export based on scope
-    const scope = this.normalizeScope(this.options.scope);
-    const exportTables = scope.includes("tables");
-    const exportFunctions = scope.includes("functions");
-    const exportMaterializedViews = scope.includes("materialized-views");
-
-    // Clean output directory if requested
-    if (this.options.clean !== false) {
-      // Default: true
-      try {
-        await fs.rm(baseOutputDir, { recursive: true, force: true });
-      } catch (error) {
-        // Directory might not exist, that's ok
-      }
-    }
-
-    // Ensure base output directory exists
-    await fs.mkdir(baseOutputDir, { recursive: true });
-
-    for (const schema of this.options.schemas) {
-      const schemaOutputDir = path.join(baseOutputDir, schema);
-      await fs.mkdir(schemaOutputDir, { recursive: true });
-
-      let progressCounter = 0;
-      let totalItems = 0;
-
-      // Count total items for progress reporting
-      if (exportTables) {
-        const tables = await queries.getTables(this.connection!, schema);
-        totalItems += tables.length;
-      }
-      if (exportFunctions) {
-        const functions = await queries.getFunctions(this.connection!, schema);
-        totalItems += functions.length;
-      }
-      if (exportMaterializedViews) {
-        const matviews = await queries.getMaterializedViews(this.connection!, schema);
-        totalItems += matviews.length;
-      }
-
-      // Export tables
-      if (exportTables) {
-        const tables = await queries.getTables(this.connection!, schema);
-
-        for (const table of tables) {
-          progressCounter++;
-
-          // Report progress
-          if (progressCallback) {
-            progressCallback({
-              schema,
-              table: table.table_name,
-              progress: progressCounter,
-              total: totalItems,
-            });
-          }
-
-          // Get table data
-          const tableData = await queries.getTableData(this.connection!, schema, table.table_name, this.options.roles);
-
-          // Generate SQL content
-          const sqlContent = generateTableSQL(
-            schema,
-            tableData,
-            this.options.role_mappings,
-            this.options.include_date
-          );
-
-          // Write file
-          const fileName = `${table.table_name}.sql`;
-          const filePath = path.join(schemaOutputDir, "tables", fileName);
-          await fs.mkdir(path.dirname(filePath), { recursive: true });
-          await fs.writeFile(filePath, sqlContent);
-
-          files.push({
-            schema,
-            name: table.table_name,
-            type: "table",
-            filePath,
-            size: sqlContent.length,
-          });
-          totalFiles++;
-          tableFiles++;
-        }
-      }
-
-      // Export functions
-      if (exportFunctions) {
-        const functions = await queries.getFunctions(this.connection!, schema);
-
-        for (const func of functions) {
-          progressCounter++;
-
-          // Report progress
-          if (progressCallback) {
-            progressCallback({
-              schema,
-              table: func.function_name, // Using table field for compatibility
-              progress: progressCounter,
-              total: totalItems,
-            });
-          }
-
-          // Generate SQL content
-          const sqlContent = generateFunctionSQL(
-            func,
-            this.options.roles,
-            this.options.role_mappings,
-            this.options.include_date
-          );
-
-          // Write file - handle function overloading by including arguments hash
-          let fileName = `${func.function_name}.sql`;
-          let filePath = path.join(schemaOutputDir, "functions", fileName);
-
-          // Handle overloaded functions
-          let counter = 1;
-          while (files.some((f) => f.filePath === filePath)) {
-            fileName = `${func.function_name}_${counter}.sql`;
-            filePath = path.join(schemaOutputDir, "functions", fileName);
-            counter++;
-          }
-
-          await fs.mkdir(path.dirname(filePath), { recursive: true });
-          await fs.writeFile(filePath, sqlContent);
-
-          files.push({
-            schema,
-            name: func.function_name,
-            type: "function",
-            filePath,
-            size: sqlContent.length,
-          });
-          totalFiles++;
-          functionFiles++;
-        }
-      }
-
-      // Export materialized views
-      if (exportMaterializedViews) {
-        const matviews = await queries.getMaterializedViews(this.connection!, schema);
-
-        for (const matview of matviews) {
-          progressCounter++;
-
-          // Report progress
-          if (progressCallback) {
-            progressCallback({
-              schema,
-              table: matview.matview_name, // Using table field for compatibility
-              progress: progressCounter,
-              total: totalItems,
-            });
-          }
-
-          // Get materialized view grants and indexes
-          const grants = await queries.getMaterializedViewGrants(
-            this.connection!,
-            schema,
-            matview.matview_name,
-            this.options.roles
-          );
-          const indexes = await queries.getMaterializedViewIndexes(
-            this.connection!,
-            schema,
-            matview.matview_name
-          );
-
-          // Generate SQL content (documentation and grants only)
-          const sqlContent = generateMaterializedViewSQL(
-            matview,
-            grants,
-            indexes,
-            this.options.role_mappings,
-            this.options.include_date
-          );
-
-          // Write file
-          const fileName = `${matview.matview_name}.sql`;
-          const filePath = path.join(
-            schemaOutputDir,
-            "materialized-views",
-            fileName
-          );
-          await fs.mkdir(path.dirname(filePath), { recursive: true });
-          await fs.writeFile(filePath, sqlContent);
-
-          files.push({
-            schema,
-            name: matview.matview_name,
-            type: "materialized-view" as any,
-            filePath,
-            size: sqlContent.length,
-          });
-          totalFiles++;
-          materializedViewFiles++;
-        }
-      }
-    }
-
-    return {
+    return runExport({
+      connection: this.connection!,
       schemas: this.options.schemas,
-      totalFiles,
-      tableFiles,
-      functionFiles,
-      materializedViewFiles,
-      outputPath: path.resolve(baseOutputDir),
-      files,
-    };
+      scope: this.normalizeScope(this.options.scope),
+      out: this.options.out || "./tables",
+      clean: this.options.clean !== false,
+      roles: this.options.roles,
+      role_mappings: this.options.role_mappings,
+      include_date: this.options.include_date,
+      progressCallback,
+    });
   }
 
   /**
