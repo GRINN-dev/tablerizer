@@ -1,54 +1,65 @@
+/**
+ * Scanner tests — adaptés pour Effect-TS
+ *
+ * CONCEPT — Tester avec des services mockés (Layer.succeed)
+ *
+ * Avant : on passait un mock DatabaseConnection en argument.
+ * Après : on crée un Layer mock et on le fournit avec Effect.provide.
+ *
+ * C'est le même principe que le DI dans les tests Java/Spring,
+ * mais sans framework, sans annotations, juste le type system.
+ *
+ *   const mockLayer = Layer.succeed(DatabaseConnection, {
+ *     query: (sql) => Effect.succeed(fakeData)
+ *   })
+ *
+ *   const result = await Effect.runPromise(
+ *     pipe(scan(...), Effect.provide(mockLayer))
+ *   )
+ */
+
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { Effect, Layer, pipe, Either } from "effect";
 import { scan, scanTable, scanFunction, type ObjectDescriptor } from "../../src/scanner.js";
-import type { DatabaseConnection, FunctionInfo, MaterializedViewInfo } from "../../src/database.js";
+import { DatabaseConnection, type FunctionInfo, type MaterializedViewInfo } from "../../src/database.js";
 
-function mockConnection(data: {
+function mockDatabaseLayer(data: {
   tables?: { table_name: string }[];
   functions?: Partial<FunctionInfo>[];
   materializedViews?: Partial<MaterializedViewInfo>[];
   tableInfo?: Record<string, any>;
   matviewGrants?: any[];
   matviewIndexes?: any[];
-}): DatabaseConnection {
-  return {
-    connect: async () => {},
-    disconnect: async () => {},
-    query: async (text: string, params?: any[]) => {
-      // getTables listing
+}) {
+  return Layer.succeed(DatabaseConnection, {
+    query: <T = any>(text: string, _params?: any[]) => {
       if (text.includes("relname as table_name") && !text.includes("pg_index")) {
-        return data.tables ?? [];
+        return Effect.succeed(data.tables ?? []) as Effect.Effect<T[], any>;
       }
-      // getFunctions listing
-      if (text.includes("pg_proc")) return data.functions ?? [];
-      // getMaterializedViews listing
+      if (text.includes("pg_proc")) return Effect.succeed(data.functions ?? []) as Effect.Effect<T[], any>;
       if (text.includes("relkind = 'm'") && !text.includes("pg_index")) {
-        return data.materializedViews ?? [];
+        return Effect.succeed(data.materializedViews ?? []) as Effect.Effect<T[], any>;
       }
-      // getTableInfo - table info query
       if (text.includes("relrowsecurity")) {
-        return [{
+        return Effect.succeed([{
           oid: 1, owner: "postgres", relrowsecurity: false,
           relforcerowsecurity: false, relkind: "r",
-        }];
+        }]) as Effect.Effect<T[], any>;
       }
-      // getColumnDefinitions
       if (text.includes("pg_attribute")) {
-        return [{
+        return Effect.succeed([{
           column_name: "id", data_type: "integer", not_null: true,
           column_default: null, comment: null, ordinal_position: 1,
-        }];
+        }]) as Effect.Effect<T[], any>;
       }
-      // getMaterializedViewIndexes
       if (text.includes("pg_index") && text.includes("relkind = 'm'")) {
-        return data.matviewIndexes ?? [];
+        return Effect.succeed(data.matviewIndexes ?? []) as Effect.Effect<T[], any>;
       }
-      // getGrants - table_privileges
-      if (text.includes("table_privileges")) return data.matviewGrants ?? [];
-      // Default empty for grants, policies, triggers, constraints, indexes, comments
-      return [];
+      if (text.includes("table_privileges")) return Effect.succeed(data.matviewGrants ?? []) as Effect.Effect<T[], any>;
+      return Effect.succeed([]) as Effect.Effect<T[], any>;
     },
-  };
+  });
 }
 
 function fakeFunctionInfo(name: string, args = ""): FunctionInfo {
@@ -79,13 +90,20 @@ function fakeMatviewInfo(name: string): MaterializedViewInfo {
   };
 }
 
+// Helper : exécute un Effect avec un mock database layer
+function runWithMock<A, E>(
+  effect: Effect.Effect<A, E, DatabaseConnection>,
+  data: Parameters<typeof mockDatabaseLayer>[0],
+): Promise<A> {
+  return Effect.runPromise(pipe(effect, Effect.provide(mockDatabaseLayer(data))));
+}
+
 describe("scan", () => {
   it("returns hydrated table descriptors when scope includes tables", async () => {
-    const conn = mockConnection({
-      tables: [{ table_name: "users" }, { table_name: "posts" }],
-    });
-
-    const result = await scan(conn, ["app_public"], ["tables"]);
+    const result = await runWithMock(
+      scan(["app_public"], ["tables"]),
+      { tables: [{ table_name: "users" }, { table_name: "posts" }] },
+    );
 
     assert.equal(result.length, 2);
     assert.equal(result[0].objectType, "table");
@@ -99,9 +117,10 @@ describe("scan", () => {
   it("returns function descriptors with FunctionData when scope includes functions", async () => {
     const auth = fakeFunctionInfo("authenticate", "email text, password text");
     const userId = fakeFunctionInfo("current_user_id");
-    const conn = mockConnection({ functions: [auth, userId] });
-
-    const result = await scan(conn, ["app_public"], ["functions"]);
+    const result = await runWithMock(
+      scan(["app_public"], ["functions"]),
+      { functions: [auth, userId] },
+    );
 
     assert.equal(result.length, 2);
     assert.equal(result[0].objectType, "function");
@@ -112,27 +131,28 @@ describe("scan", () => {
   });
 
   it("passes roles to function descriptors as grantRoles", async () => {
-    const conn = mockConnection({ functions: [fakeFunctionInfo("do_thing")] });
-
-    const result = await scan(conn, ["app_public"], ["functions"], ["app_user", "admin"]);
+    const result = await runWithMock(
+      scan(["app_public"], ["functions"], ["app_user", "admin"]),
+      { functions: [fakeFunctionInfo("do_thing")] },
+    );
 
     const first = result[0] as Extract<ObjectDescriptor, { objectType: "function" }>;
     assert.deepStrictEqual(first.data.grantRoles, ["app_user", "admin"]);
   });
 
   it("returns materialized view descriptors with grants and indexes", async () => {
-    const stats = fakeMatviewInfo("user_stats");
-    const conn = mockConnection({
-      materializedViews: [stats],
-      matviewGrants: [
-        { grantor: "postgres", grantee: "app_user", privilege: "SELECT", is_grantable: false },
-      ],
-      matviewIndexes: [
-        { index_name: "idx_stats", index_definition: "CREATE INDEX idx_stats ON app_public.user_stats (id)" },
-      ],
-    });
-
-    const result = await scan(conn, ["app_public"], ["materialized-views"]);
+    const result = await runWithMock(
+      scan(["app_public"], ["materialized-views"]),
+      {
+        materializedViews: [fakeMatviewInfo("user_stats")],
+        matviewGrants: [
+          { grantor: "postgres", grantee: "app_user", privilege: "SELECT", is_grantable: false },
+        ],
+        matviewIndexes: [
+          { index_name: "idx_stats", index_definition: "CREATE INDEX idx_stats ON app_public.user_stats (id)" },
+        ],
+      },
+    );
 
     assert.equal(result.length, 1);
     assert.equal(result[0].objectType, "materialized-view");
@@ -145,24 +165,24 @@ describe("scan", () => {
   });
 
   it("only returns object types included in scope", async () => {
-    const conn = mockConnection({
-      tables: [{ table_name: "users" }],
-      functions: [fakeFunctionInfo("authenticate")],
-      materializedViews: [fakeMatviewInfo("user_stats")],
-    });
-
-    const result = await scan(conn, ["app_public"], ["tables"]);
+    const result = await runWithMock(
+      scan(["app_public"], ["tables"]),
+      {
+        tables: [{ table_name: "users" }],
+        functions: [fakeFunctionInfo("authenticate")],
+        materializedViews: [fakeMatviewInfo("user_stats")],
+      },
+    );
 
     assert.equal(result.length, 1);
     assert.equal(result[0].objectType, "table");
   });
 
   it("scans across multiple schemas", async () => {
-    const conn = mockConnection({
-      tables: [{ table_name: "users" }],
-    });
-
-    const result = await scan(conn, ["app_public", "app_private"], ["tables"]);
+    const result = await runWithMock(
+      scan(["app_public", "app_private"], ["tables"]),
+      { tables: [{ table_name: "users" }] },
+    );
 
     assert.equal(result.length, 2);
     assert.equal(result[0].schema, "app_public");
@@ -172,31 +192,36 @@ describe("scan", () => {
 
 describe("scanFunction", () => {
   it("returns FunctionData with roles passed through as grantRoles", async () => {
-    const conn = mockConnection({
-      functions: [fakeFunctionInfo("authenticate", "email text, password text")],
-    });
-
-    const data = await scanFunction(conn, "app_public", "authenticate", ["app_user", "admin"]);
+    const data = await runWithMock(
+      scanFunction("app_public", "authenticate", ["app_user", "admin"]),
+      { functions: [fakeFunctionInfo("authenticate", "email text, password text")] },
+    );
 
     assert.equal(data.info.function_name, "authenticate");
     assert.equal(data.info.function_arguments, "email text, password text");
     assert.deepStrictEqual(data.grantRoles, ["app_user", "admin"]);
   });
 
-  it("throws when function name is not found", async () => {
-    const conn = mockConnection({ functions: [fakeFunctionInfo("authenticate")] });
-
-    await assert.rejects(
-      () => scanFunction(conn, "app_public", "nonexistent"),
-      { message: "Function app_public.nonexistent not found" },
+  it("fails with ScanError when function name is not found", async () => {
+    // On utilise Effect.either pour capturer l'erreur sans throw
+    const result = await Effect.runPromise(
+      pipe(
+        Effect.either(scanFunction("app_public", "nonexistent")),
+        Effect.provide(mockDatabaseLayer({ functions: [fakeFunctionInfo("authenticate")] })),
+      ),
     );
+
+    assert.ok(Either.isLeft(result));
+    if (Either.isLeft(result)) {
+      assert.equal(result.left._tag, "ScanError");
+      assert.ok(result.left.message.includes("nonexistent"));
+    }
   });
 });
 
 describe("scanTable", () => {
   it("returns hydrated TableData for a named table", async () => {
-    const conn = mockConnection({});
-    const data = await scanTable(conn, "app_public", "users");
+    const data = await runWithMock(scanTable("app_public", "users"), {});
 
     assert.equal(data.table, "users");
     assert.equal(data.owner, "postgres");
@@ -205,19 +230,23 @@ describe("scanTable", () => {
     assert.equal(data.column_definitions[0].column_name, "id");
   });
 
-  it("throws when table is not found", async () => {
-    const conn: DatabaseConnection = {
-      connect: async () => {},
-      disconnect: async () => {},
-      query: async (text: string) => {
-        if (text.includes("relrowsecurity")) return [];
-        return [];
-      },
-    };
+  it("fails with ScanError when table is not found", async () => {
+    const emptyLayer = Layer.succeed(DatabaseConnection, {
+      query: <T = any>(_text: string, _params?: any[]) =>
+        Effect.succeed([]) as Effect.Effect<T[], any>,
+    });
 
-    await assert.rejects(
-      () => scanTable(conn, "app_public", "nonexistent"),
-      { message: "Table app_public.nonexistent not found" },
+    const result = await Effect.runPromise(
+      pipe(
+        Effect.either(scanTable("app_public", "nonexistent")),
+        Effect.provide(emptyLayer),
+      ),
     );
+
+    assert.ok(Either.isLeft(result));
+    if (Either.isLeft(result)) {
+      assert.equal(result.left._tag, "ScanError");
+      assert.ok(result.left.message.includes("nonexistent"));
+    }
   });
 });

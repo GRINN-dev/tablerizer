@@ -1,13 +1,37 @@
 /**
- * Command-line interface for Tablerizer
+ * CLI for Tablerizer — Effect-TS version
+ *
+ * CONCEPTS EFFECT INTRODUITS :
+ *   1. Effect.provide   → fournir un Layer, éliminer le R du type
+ *   2. Effect.catchTag  → gérer une erreur spécifique par son _tag
+ *   3. Effect.catchAll  → attraper toutes les erreurs restantes
+ *   4. Effect.runPromise → la frontière Effect → monde réel
  */
 
-const TOOL_NAME = "tablerizer";
-const VERSION = "2.0.0";
+import { Effect, pipe } from "effect"
+import { readFileSync } from "fs"
+import {
+  parseCliArgs,
+  parseEnvVars,
+  parseConfigFile,
+  resolveConfig,
+  validateConfig,
+  findConfigFile,
+  ConfigParseError,
+  type TablerizerOptions,
+  type ConfigValidationError,
+  type ConfigFileNotFound,
+} from "./config.js"
+import { BunSQLConnectionLive, type DatabaseError } from "./database.js"
+import { exportAll, type ExportResult, type ProgressCallback } from "./tablerizer.js"
+import type { ScanError } from "./scanner.js"
+import type { WriteError } from "./writer.js"
 
-// ASCII Art for the tool
+const TOOL_NAME = "tablerizer"
+const VERSION = "2.0.0"
+
 const ASCII_ART = `
-████████╗ █████╗ ██████╗ ██╗     ███████╗██████╗ ██╗███████╗███████╗██████╗ 
+████████╗ █████╗ ██████╗ ██╗     ███████╗██████╗ ██╗███████╗███████╗██████╗
 ╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝██╔══██╗██║╚══███╔╝██╔════╝██╔══██╗
    ██║   ███████║██████╔╝██║     █████╗  ██████╔╝██║  ███╔╝ █████╗  ██████╔╝
    ██║   ██╔══██║██╔══██╗██║     ██╔══╝  ██╔══██╗██║ ███╔╝  ██╔══╝  ██╔══██╗
@@ -15,18 +39,12 @@ const ASCII_ART = `
    ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═╝  ╚═╝
 
 🧙‍♂️ The PostgreSQL Table Export Wizard 🧙‍♂️
-`;
+`
 
-/**
- * Show ASCII art banner
- */
 export function showBanner(): void {
-  console.log(ASCII_ART);
+  console.log(ASCII_ART)
 }
 
-/**
- * Show help information
- */
 export function showHelp(): void {
   console.log(`
 🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!
@@ -75,227 +93,231 @@ ENVIRONMENT ENCHANTMENTS:
   OUTPUT_DIR        📁 Output directory path
   ROLES             🔐 Comma-separated role names
 
-MAGIC FEATURES:
-  🎲 Role Mappings    - Replace roles with placeholders for Graphile Migrate
-  📋 Rich Documentation - Table schema, foreign keys, constraints, comments  
-  🧹 Idempotent Scripts - Safe cleanup and recreation sections
-  ⚡ Multi-Schema Export - Organized folder structure
-  🔮 Function Export - Export stored procedures and functions with GRANT EXECUTE
-  📊 Flexible Scope - Export tables, functions, views, materialized-views, or all
-
 For more wizardry: https://github.com/your-repo/tablerizer
-`);
+`)
 }
 
-/**
- * Show version information
- */
 export function showVersion(): void {
-  console.log(
-    `🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!`
-  );
+  console.log(`🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!`)
 }
 
 function getConfigPath(args: string[]): string | undefined {
-  const idx = args.indexOf("--config");
-  return idx !== -1 ? args[idx + 1] : undefined;
+  const idx = args.indexOf("--config")
+  return idx !== -1 ? args[idx + 1] : undefined
 }
 
-/**
- * Display configuration summary
- */
 export function displayConfigSummary(config: {
-  schemas: string[];
-  out?: string;
-  roles?: string[];
-  role_mappings?: Record<string, string>;
-  scope?: string | string[];
-  silent?: boolean;
+  schemas: string[]
+  out?: string
+  roles?: string[]
+  role_mappings?: Record<string, string>
+  scope?: string | string[]
+  silent?: boolean
 }): void {
   if (config.silent) {
-    // Minimal output in silent mode
-    console.log(
-      `Exporting ${config.schemas.join(",")} to ${config.out || "./tables"}`
-    );
-    return;
+    console.log(`Exporting ${config.schemas.join(",")} to ${config.out || "./tables"}`)
+    return
   }
-
-  console.log(`📂 Conjuring files in: ${config.out || "./tables"}`);
-  console.log(`🎯 Target schemas: ${config.schemas.join(", ")}`);
-  console.log(
-    `📊 Export scope: ${
-      Array.isArray(config.scope)
-        ? config.scope.join(", ")
-        : config.scope || "all"
-    }`
-  );
-
+  console.log(`📂 Conjuring files in: ${config.out || "./tables"}`)
+  console.log(`🎯 Target schemas: ${config.schemas.join(", ")}`)
+  console.log(`📊 Export scope: ${Array.isArray(config.scope) ? config.scope.join(", ") : config.scope || "all"}`)
   if (config.roles && config.roles.length > 0) {
-    console.log(`🔐 Filtering for roles: ${config.roles.join(", ")}`);
+    console.log(`🔐 Filtering for roles: ${config.roles.join(", ")}`)
   } else {
-    console.log(`🔐 Including all roles (full power!)`);
+    console.log(`🔐 Including all roles (full power!)`)
   }
-
   if (config.role_mappings && Object.keys(config.role_mappings).length > 0) {
-    console.log(`🎭 Role transformation spells:`);
+    console.log(`🎭 Role transformation spells:`)
     for (const [from, to] of Object.entries(config.role_mappings)) {
-      console.log(`   ✨ ${from} → ${to}`);
+      console.log(`   ✨ ${from} → ${to}`)
     }
   }
 }
 
-/**
- * Display completion summary
- */
 export function displayCompletionSummary(summary: {
-  schemas: string[];
-  totalFiles: number;
-  tableFiles?: number;
-  functionFiles?: number;
-  outputPath: string;
-  roleMappings?: Record<string, string>;
-  silent?: boolean;
+  schemas: string[]
+  totalFiles: number
+  tableFiles?: number
+  functionFiles?: number
+  outputPath: string
+  roleMappings?: Record<string, string>
+  silent?: boolean
 }): void {
   if (summary.silent) {
-    // Minimal output in silent mode
-    console.log(
-      `Complete: ${summary.totalFiles} files exported to ${summary.outputPath}`
-    );
-    return;
+    console.log(`Complete: ${summary.totalFiles} files exported to ${summary.outputPath}`)
+    return
   }
-
-  console.log(`🏆 Export wizard complete!`);
-  console.log(`📊 Summary:`);
-  console.log(`   • Schemas processed: ${summary.schemas.length}`);
-  console.log(`   • Total files created: ${summary.totalFiles}`);
-
-  if (summary.tableFiles !== undefined) {
-    console.log(`   • Table files: ${summary.tableFiles}`);
-  }
-  if (summary.functionFiles !== undefined) {
-    console.log(`   • Function files: ${summary.functionFiles}`);
-  }
-
-  console.log(`   • Output location: ${summary.outputPath}`);
-
+  console.log(`🏆 Export wizard complete!`)
+  console.log(`📊 Summary:`)
+  console.log(`   • Schemas processed: ${summary.schemas.length}`)
+  console.log(`   • Total files created: ${summary.totalFiles}`)
+  if (summary.tableFiles !== undefined) console.log(`   • Table files: ${summary.tableFiles}`)
+  if (summary.functionFiles !== undefined) console.log(`   • Function files: ${summary.functionFiles}`)
+  console.log(`   • Output location: ${summary.outputPath}`)
   if (summary.roleMappings && Object.keys(summary.roleMappings).length > 0) {
-    console.log(
-      `   • Role transformation spells: ${
-        Object.keys(summary.roleMappings).length
-      } applied`
-    );
+    console.log(`   • Role transformation spells: ${Object.keys(summary.roleMappings).length} applied`)
   }
-
-  console.log(`\\n✨ Your database spells are ready! ✨\\n`);
+  console.log(`\n✨ Your database spells are ready! ✨\n`)
 }
 
-/**
- * Display error message with wizard theme
- */
 export function displayError(message: string): void {
-  console.error(`💥 Spell failed: ${message}`);
+  console.error(`💥 Spell failed: ${message}`)
 }
 
-/**
- * Display connection status
- */
-export function displayConnectionStatus(
-  connecting: boolean,
-  silent?: boolean
-): void {
+export function displayConnectionStatus(connecting: boolean, silent?: boolean): void {
   if (silent) {
-    // Minimal output in silent mode
-    if (connecting) {
-      console.log(`Connecting...`);
-    } else {
-      console.log(`Connected.`);
-    }
-    return;
+    console.log(connecting ? `Connecting...` : `Connected.`)
+    return
   }
-
   if (connecting) {
-    console.log(`🔮 Connecting to database...`);
+    console.log(`🔮 Connecting to database...`)
   } else {
-    console.log(`✨ Connected successfully! The magic begins...\n`);
+    console.log(`✨ Connected successfully! The magic begins...\n`)
   }
 }
 
-/**
- * Display processing status
- */
 export function displayProcessingStatus(silent?: boolean): void {
   if (silent) {
-    // Minimal output in silent mode
-    console.log(`Processing...`);
-    return;
+    console.log(`Processing...`)
+    return
   }
-
-  console.log(`\n🚀 The table export wizard is working...\n`);
+  console.log(`\n🚀 The table export wizard is working...\n`)
 }
 
-/**
- * Main CLI runner function
- */
-export async function runCLI(): Promise<void> {
-  const { Tablerizer } = await import("./index.js");
-  const { parseCliArgs, parseEnvVars, parseConfigFile, resolveConfig, findConfigFile } = await import("./config.js");
-  const fs = await import("fs");
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CHARGEMENT DE LA CONFIG (composition d'Effects)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// CONCEPT — Effect.catchTag
+//
+// Gère UNE erreur spécifique par son _tag, sans toucher aux autres.
+//
+//   pipe(
+//     findConfigFile,                              // Effect<string, ConfigFileNotFound>
+//     Effect.catchTag("ConfigFileNotFound", () =>   // attrape JUSTE ConfigFileNotFound
+//       Effect.succeed(undefined)                   // → pas de fichier, c'est OK
+//     )
+//   )
+//   // Résultat : Effect<string | undefined, never>
+//   //                                       ^^^^^
+//   //            l'erreur a été RETIRÉE du type !
+//
+// C'est comme un catch sélectif : on traite ConfigFileNotFound
+// mais on laisse passer ConfigParseError (qui est une vraie erreur).
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  try {
-    const args = process.argv.slice(2);
+const loadConfig = (
+  args: string[],
+): Effect.Effect<TablerizerOptions, ConfigParseError | ConfigValidationError> =>
+  Effect.gen(function* () {
+    const configPath = getConfigPath(args)
 
-    if (args.includes("--help") || args.includes("-h")) {
-      showHelp();
-      process.exit(0);
-    }
-    if (args.includes("--version") || args.includes("-v")) {
-      showVersion();
-      process.exit(0);
-    }
+    // Charger le fichier de config (ou {} si pas trouvé)
+    const fileConfig = yield* pipe(
+      // Si --config est spécifié, utiliser ce chemin
+      // Sinon, chercher .tablerizerrc (peut échouer avec ConfigFileNotFound)
+      configPath
+        ? Effect.succeed(configPath)
+        : findConfigFile,
+      // Lire et parser le fichier
+      Effect.flatMap((filePath) =>
+        pipe(
+          Effect.try({
+            try: () => readFileSync(filePath, "utf8"),
+            catch: (cause) =>
+              new ConfigParseError({
+                message: `Cannot read ${filePath}: ${cause}`,
+                cause,
+              }),
+          }),
+          Effect.flatMap((content) => parseConfigFile(content)),
+        ),
+      ),
+      // Si pas de fichier trouvé → utiliser un objet vide (c'est normal)
+      Effect.catchTag("ConfigFileNotFound", () =>
+        Effect.succeed({} as Partial<TablerizerOptions>),
+      ),
+    )
 
-    const configPath = getConfigPath(args);
-    const actualConfigPath = configPath || findConfigFile();
-    const fileLayer = actualConfigPath
-      ? parseConfigFile(fs.readFileSync(actualConfigPath, "utf8"))
-      : {};
-
+    // Fusionner les couches : file < env < cli
     const config = resolveConfig({
-      file: fileLayer,
+      file: fileConfig,
       env: parseEnvVars(process.env),
       cli: parseCliArgs(args),
-    });
+    })
 
-    // Show banner only if not in silent mode
-    if (!config.silent) {
-      showBanner();
+    // Valider la config finale
+    return yield* validateConfig(config)
+  })
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PROGRAMME PRINCIPAL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// CONCEPT — Effect.provide
+//
+// Effect.provide(layer) FOURNIT un service et RETIRE le
+// requirement du type :
+//
+//   exportAll(config)
+//     → Effect<ExportResult, ..., DatabaseConnection>
+//                                  ^^^^^^^^^^^^^^^^^^
+//
+//   pipe(exportAll(config), Effect.provide(BunSQLConnectionLive(url)))
+//     → Effect<ExportResult, ..., never>
+//                                 ^^^^^
+//                                 requirement satisfait !
+//
+// C'est le moment où la "recette" (Layer) est connectée au
+// "programme" (Effect). Le Layer gère connect/disconnect
+// automatiquement via acquireRelease.
+//
+// CONCEPT — Effect.runPromise
+//
+// La FRONTIÈRE entre Effect et le monde "normal".
+// Transforme un Effect<A, E, never> en Promise<A>.
+//
+// runPromise ne peut être appelé que sur un Effect sans requirements
+// (R = never). Si tu oublies un Effect.provide, ça ne compile pas.
+//
+// C'est LE point d'entrée unique. Tout le reste du programme est
+// pur Effect, composable, testable, typé.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const cliProgram: Effect.Effect<void, never> = pipe(
+  Effect.gen(function* () {
+    const args = process.argv.slice(2)
+
+    if (args.includes("--help") || args.includes("-h")) {
+      showHelp()
+      return
+    }
+    if (args.includes("--version") || args.includes("-v")) {
+      showVersion()
+      return
     }
 
-    // Display configuration summary
-    displayConfigSummary(config);
-    displayConnectionStatus(true, config.silent);
+    const config = yield* loadConfig(args)
 
-    // Create and run tablerizer
-    const tablerizer = new Tablerizer(config);
-    await tablerizer.connect();
+    if (!config.silent) showBanner()
+    displayConfigSummary(config)
+    displayConnectionStatus(true, config.silent)
 
-    displayConnectionStatus(false, config.silent);
-    displayProcessingStatus(config.silent);
+    // exportAll a besoin de DatabaseConnection.
+    // Effect.provide(BunSQLConnectionLive(...)) fournit ce service.
+    // La connexion est créée par le Layer (acquireRelease),
+    // utilisée pendant l'export, puis fermée automatiquement.
+    const result = yield* pipe(
+      exportAll(config, (progress) => {
+        if (!config.silent) {
+          const pct = Math.round((progress.progress / progress.total) * 100)
+          console.log(`    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${pct}%)`)
+        }
+      }),
+      Effect.provide(BunSQLConnectionLive(config.database_url!)),
+    )
 
-    let progressCounter = 0;
-
-    const result = await tablerizer.export((progress) => {
-      progressCounter++;
-      const percentage = Math.round((progress.progress / progress.total) * 100);
-      if (!config.silent) {
-        console.log(
-          `    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${percentage}%)`
-        );
-      }
-    });
-
-    await tablerizer.disconnect();
-
-    // Display completion summary
+    displayConnectionStatus(false, config.silent)
     displayCompletionSummary({
       schemas: result.schemas,
       totalFiles: result.totalFiles,
@@ -304,13 +326,48 @@ export async function runCLI(): Promise<void> {
       outputPath: result.outputPath,
       roleMappings: config.role_mappings,
       silent: config.silent,
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      displayError(error.message);
-    } else {
-      displayError("Unknown error occurred");
-    }
-    throw error;
-  }
+    })
+  }),
+  // ── Gestion des erreurs ──
+  //
+  // CONCEPT — Effect.catchTags
+  //
+  // Gère CHAQUE type d'erreur séparément par son _tag.
+  // Si tu en oublies un → erreur de compilation.
+  // C'est l'exhaustive error handling, garanti par le compilateur.
+  Effect.catchTags({
+    ConfigValidationError: (e) =>
+      Effect.sync(() => {
+        displayError(e.issues.join("; "))
+        process.exit(1)
+      }),
+    ConfigParseError: (e) =>
+      Effect.sync(() => {
+        displayError(`Configuration error: ${e.message}`)
+        process.exit(1)
+      }),
+    DatabaseError: (e) =>
+      Effect.sync(() => {
+        displayError(`Database error: ${e.message}`)
+        process.exit(1)
+      }),
+    ScanError: (e) =>
+      Effect.sync(() => {
+        displayError(e.message)
+        process.exit(1)
+      }),
+    WriteError: (e) =>
+      Effect.sync(() => {
+        displayError(`Failed to write ${e.filePath}`)
+        process.exit(1)
+      }),
+  }),
+)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// POINT D'ENTRÉE — la frontière Effect → monde réel
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export async function runCLI(): Promise<void> {
+  return Effect.runPromise(cliProgram)
 }
