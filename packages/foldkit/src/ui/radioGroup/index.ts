@@ -1,0 +1,426 @@
+import {
+  Array,
+  Effect,
+  Match as M,
+  Option,
+  Predicate,
+  Schema as S,
+  String,
+  pipe,
+} from 'effect'
+
+import * as Command from '../../command/index.js'
+import * as Dom from '../../dom/index.js'
+import {
+  type Attribute,
+  type Html,
+  createLazy,
+  html,
+} from '../../html/index.js'
+import { m } from '../../message/index.js'
+import { evo } from '../../struct/index.js'
+import { keyToIndex } from '../keyboard.js'
+
+// MODEL
+
+/** Controls the radio group layout direction and which arrow keys navigate between options. */
+export const Orientation = S.Literals(['Horizontal', 'Vertical'])
+export type Orientation = typeof Orientation.Type
+
+/** Schema for the radio group component's state, tracking the selected value and orientation. */
+export const Model = S.Struct({
+  id: S.String,
+  selectedValue: S.Option(S.String),
+  orientation: Orientation,
+})
+
+export type Model = typeof Model.Type
+
+// MESSAGE
+
+/** Sent when a radio option is selected via click or keyboard navigation. */
+export const SelectedOption = m('SelectedOption', {
+  value: S.String,
+  index: S.Number,
+})
+/** Sent when the focus-option command completes. */
+export const CompletedFocusOption = m('CompletedFocusOption')
+
+/** Union of all messages the radio group component can produce. */
+export const Message: S.Union<
+  [typeof SelectedOption, typeof CompletedFocusOption]
+> = S.Union([SelectedOption, CompletedFocusOption])
+
+export type SelectedOption = typeof SelectedOption.Type
+export type CompletedFocusOption = typeof CompletedFocusOption.Type
+
+export type Message = typeof Message.Type
+
+// INIT
+
+/** Configuration for creating a radio group model with `init`. */
+export type InitConfig = Readonly<{
+  id: string
+  selectedValue?: string
+  orientation?: Orientation
+}>
+
+/** Creates an initial radio group model from a config. Defaults to no selection and vertical orientation. */
+export const init = (config: InitConfig): Model => ({
+  id: config.id,
+  selectedValue: Option.fromNullishOr(config.selectedValue),
+  orientation: config.orientation ?? 'Vertical',
+})
+
+// UPDATE
+
+const optionId = (id: string, index: number): string => `${id}-option-${index}`
+
+/** Moves focus to the radio option at the given index. */
+export const FocusOption = Command.define(
+  'FocusOption',
+  { id: S.String, index: S.Number },
+  CompletedFocusOption,
+)(({ id, index }) =>
+  Dom.focus(`#${optionId(id, index)}`).pipe(
+    Effect.ignore,
+    Effect.as(CompletedFocusOption()),
+  ),
+)
+
+/** Processes a radio group message and returns the next model and commands. */
+export const update = (
+  model: Model,
+  message: Message,
+): readonly [Model, ReadonlyArray<Command.Command<Message>>] =>
+  M.value(message).pipe(
+    M.withReturnType<
+      readonly [Model, ReadonlyArray<Command.Command<Message>>]
+    >(),
+    M.tagsExhaustive({
+      SelectedOption: ({ value, index }) => [
+        evo(model, { selectedValue: () => Option.some(value) }),
+        [FocusOption({ id: model.id, index })],
+      ],
+      CompletedFocusOption: () => [model, []],
+    }),
+  )
+
+/** Programmatically selects a value in the radio group, updating the model and returning
+ *  focus commands. Use this in domain-event handlers when the radio group uses `onSelected`. */
+export const select = (
+  model: Model,
+  value: string,
+  options: ReadonlyArray<string>,
+): readonly [Model, ReadonlyArray<Command.Command<Message>>] =>
+  pipe(
+    options,
+    Array.findFirstIndex(option => option === value),
+    Option.match({
+      onNone: () => [model, []],
+      onSome: index => update(model, SelectedOption({ value, index })),
+    }),
+  )
+
+// VIEW
+
+/** Attribute groups the radio group component provides for each option's `content` callback. */
+export type OptionAttributes<ParentMessage> = Readonly<{
+  option: ReadonlyArray<Attribute<ParentMessage>>
+  label: ReadonlyArray<Attribute<ParentMessage>>
+  description: ReadonlyArray<Attribute<ParentMessage>>
+}>
+
+/** Configuration for an individual radio option. The `value` field carries the generic `RadioOption` type
+ *  so it flows through to `toParentMessage` callbacks without widening to `string`. */
+export type OptionConfig<
+  ParentMessage,
+  RadioOption extends string = string,
+> = Readonly<{
+  value: RadioOption
+  content: (attributes: OptionAttributes<ParentMessage>) => Html
+}>
+
+/** The `SelectedOption` message as seen by `toParentMessage` callbacks, with `value` narrowed
+ *  to the generic `RadioOption` type instead of `string`. */
+export type NarrowedSelectedOption<RadioOption extends string> = Readonly<{
+  readonly _tag: 'SelectedOption'
+  readonly value: RadioOption
+  readonly index: number
+}>
+
+/** Configuration for rendering a radio group with `view`. */
+export type ViewConfig<ParentMessage, RadioOption extends string> = Readonly<{
+  model: Model
+  toParentMessage: (
+    message: NarrowedSelectedOption<RadioOption> | CompletedFocusOption,
+  ) => ParentMessage
+  onSelected?: (value: RadioOption, index: number) => ParentMessage
+  options: ReadonlyArray<RadioOption>
+  optionToConfig: (
+    option: RadioOption,
+    context: Readonly<{
+      isSelected: boolean
+      isActive: boolean
+      isDisabled: boolean
+    }>,
+  ) => OptionConfig<ParentMessage, RadioOption>
+  isOptionDisabled?: (option: RadioOption, index: number) => boolean
+  orientation?: Orientation
+  ariaLabel: string
+  className?: string
+  attributes?: ReadonlyArray<Attribute<ParentMessage>>
+  name?: string
+  isDisabled?: boolean
+}>
+
+const labelId = (id: string, index: number): string =>
+  `${id}-option-${index}-label`
+
+const descriptionId = (id: string, index: number): string =>
+  `${id}-option-${index}-description`
+
+/** Renders an accessible radio group by building ARIA attribute groups and delegating layout to the consumer's `optionToConfig` callback. */
+export const view = <ParentMessage, RadioOption extends string>(
+  config: ViewConfig<ParentMessage, RadioOption>,
+): Html => {
+  const h = html<ParentMessage>()
+
+  const {
+    model,
+    model: { id, selectedValue },
+    toParentMessage,
+    onSelected,
+    options,
+    optionToConfig,
+    isOptionDisabled: isOptionDisabledFn,
+    orientation = model.orientation,
+    ariaLabel,
+    className,
+    attributes = [],
+    name,
+    isDisabled: isGroupDisabled = false,
+  } = config
+
+  const dispatchSelected = (
+    value: RadioOption,
+    index: number,
+  ): ParentMessage =>
+    onSelected
+      ? onSelected(value, index)
+      : toParentMessage({ _tag: 'SelectedOption', value, index })
+
+  const isDisabled = (index: number): boolean => {
+    if (isGroupDisabled) {
+      return true
+    }
+
+    if (!isOptionDisabledFn) {
+      return false
+    }
+
+    return pipe(
+      options,
+      Array.get(index),
+      Option.exists(option => isOptionDisabledFn(option, index)),
+    )
+  }
+
+  const selectedIndex = Option.flatMap(selectedValue, value =>
+    Array.findFirstIndex(
+      options,
+      option =>
+        optionToConfig(option, {
+          isSelected: false,
+          isActive: false,
+          isDisabled: false,
+        }).value === value,
+    ),
+  )
+
+  const focusedIndex = pipe(
+    selectedIndex,
+    Option.getOrElse(() =>
+      pipe(
+        options.length,
+        Array.makeBy(index => index),
+        Array.findFirst(Predicate.not(isDisabled)),
+        Option.getOrElse(() => 0),
+      ),
+    ),
+  )
+
+  const { nextKey, previousKey } = M.value(orientation).pipe(
+    M.when('Horizontal', () => ({
+      nextKey: 'ArrowRight',
+      previousKey: 'ArrowLeft',
+    })),
+    M.when('Vertical', () => ({
+      nextKey: 'ArrowDown',
+      previousKey: 'ArrowUp',
+    })),
+    M.exhaustive,
+  )
+
+  const optionValues = Array.map(
+    options,
+    (option, index) =>
+      optionToConfig(option, {
+        isSelected: Option.exists(
+          selectedIndex,
+          selectedIdx => selectedIdx === index,
+        ),
+        isActive: index === focusedIndex,
+        isDisabled: isDisabled(index),
+      }).value,
+  )
+
+  const resolveKeyIndex = keyToIndex(
+    nextKey,
+    previousKey,
+    options.length,
+    focusedIndex,
+    isDisabled,
+  )
+
+  const handleKeyDown =
+    (currentIndex: number) =>
+    (key: string): Option.Option<ParentMessage> =>
+      M.value(key).pipe(
+        M.whenOr(
+          nextKey,
+          previousKey,
+          'Home',
+          'End',
+          'PageUp',
+          'PageDown',
+          () => {
+            const nextIndex = resolveKeyIndex(key)
+            return pipe(
+              optionValues,
+              Array.get(nextIndex),
+              Option.map(value => dispatchSelected(value, nextIndex)),
+            )
+          },
+        ),
+        M.when(' ', () =>
+          pipe(
+            optionValues,
+            Array.get(currentIndex),
+            Option.map(value => dispatchSelected(value, currentIndex)),
+          ),
+        ),
+        M.orElse(() => Option.none()),
+      )
+
+  const renderedOptions = Array.map(options, (option, index) => {
+    const isSelected = Option.exists(
+      selectedIndex,
+      selectedIdx => selectedIdx === index,
+    )
+    const isFocusable = index === focusedIndex
+    const isOptionDisabled = isDisabled(index)
+    const optionConfig = optionToConfig(option, {
+      isSelected,
+      isActive: isFocusable,
+      isDisabled: isOptionDisabled,
+    })
+
+    const checkedAttributes = isSelected ? [h.DataAttribute('checked', '')] : []
+    const activeAttributes = isFocusable ? [h.DataAttribute('active', '')] : []
+
+    const disabledAttributes = isOptionDisabled
+      ? [h.AriaDisabled(true), h.DataAttribute('disabled', '')]
+      : []
+
+    const optionAttributes: ReadonlyArray<Attribute<ParentMessage>> = [
+      h.Id(optionId(id, index)),
+      h.Role('radio'),
+      h.AriaChecked(isSelected),
+      h.AriaLabelledBy(labelId(id, index)),
+      h.AriaDescribedBy(descriptionId(id, index)),
+      h.Tabindex(isFocusable ? 0 : -1),
+      ...checkedAttributes,
+      ...activeAttributes,
+      ...disabledAttributes,
+      ...(isOptionDisabled
+        ? []
+        : [
+            h.OnClick(dispatchSelected(optionConfig.value, index)),
+            h.OnKeyDownPreventDefault(handleKeyDown(index)),
+          ]),
+    ]
+
+    const labelAttributes: ReadonlyArray<Attribute<ParentMessage>> = [
+      h.Id(labelId(id, index)),
+    ]
+
+    const descriptionAttributes: ReadonlyArray<Attribute<ParentMessage>> = [
+      h.Id(descriptionId(id, index)),
+    ]
+
+    return optionConfig.content({
+      option: optionAttributes,
+      label: labelAttributes,
+      description: descriptionAttributes,
+    })
+  })
+
+  const hiddenInputs = pipe(
+    name,
+    Option.fromNullishOr,
+    Option.flatMap(inputName =>
+      pipe(
+        selectedValue,
+        Option.map(value =>
+          h.input([h.Type('hidden'), h.Name(inputName), h.Value(value)]),
+        ),
+      ),
+    ),
+    Option.match({
+      onNone: () => [],
+      onSome: hiddenInput => [hiddenInput],
+    }),
+  )
+
+  const groupAttributes = [
+    h.Role('radiogroup'),
+    h.AriaOrientation(String.toLowerCase(orientation)),
+    h.AriaLabel(ariaLabel),
+    ...(className ? [h.Class(className)] : []),
+    ...attributes,
+  ]
+
+  return h.div(groupAttributes, [...renderedOptions, ...hiddenInputs])
+}
+
+/** Creates a memoized radio group view. Static config is captured in a closure;
+ *  only `model` and `toParentMessage` are compared per render via `createLazy`. */
+export const lazy = <ParentMessage, RadioOption extends string>(
+  staticConfig: Omit<
+    ViewConfig<ParentMessage, RadioOption>,
+    'model' | 'toParentMessage' | 'onSelected'
+  >,
+): ((
+  model: Model,
+  toParentMessage: ViewConfig<ParentMessage, RadioOption>['toParentMessage'],
+) => Html) => {
+  const lazyView = createLazy()
+
+  return (model, toParentMessage) =>
+    lazyView(
+      (
+        currentModel: Model,
+        currentToParentMessage: ViewConfig<
+          ParentMessage,
+          RadioOption
+        >['toParentMessage'],
+      ) =>
+        view({
+          ...staticConfig,
+          model: currentModel,
+          toParentMessage: currentToParentMessage,
+        }),
+      [model, toParentMessage],
+    )
+}

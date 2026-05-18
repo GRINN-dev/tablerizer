@@ -1,0 +1,44 @@
+import { type Html, html } from 'foldkit/html'
+
+import { WorkHistory } from '../step'
+import { workEntryView } from './workEntry'
+
+export const workHistoryView = <ParentMessage>(
+  model: WorkHistory.Model,
+  toParentMessage: (message: WorkHistory.Message) => ParentMessage,
+): Html => {
+  const h = html<ParentMessage>()
+
+  return h.div(
+    [h.Class('space-y-6')],
+    [
+      h.p(
+        [h.Class('text-sm text-gray-500')],
+        ['Add your relevant work experience, starting with the most recent.'],
+      ),
+      h.div(
+        [h.Class('divide-y divide-gray-200')],
+        model.entries.map(entry =>
+          workEntryView<ParentMessage>(
+            entry,
+            message =>
+              toParentMessage(
+                WorkHistory.GotEntryMessage({ entryId: entry.id, message }),
+              ),
+            toParentMessage(WorkHistory.RemovedEntry({ entryId: entry.id })),
+          ),
+        ),
+      ),
+      h.button(
+        [
+          h.Type('button'),
+          h.OnClick(toParentMessage(WorkHistory.ClickedAddEntry())),
+          h.Class(
+            'w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm font-medium text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition cursor-pointer',
+          ),
+        ],
+        ['+ Add Position'],
+      ),
+    ],
+  )
+}

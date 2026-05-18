@@ -1,0 +1,27 @@
+import { Runtime } from 'foldkit'
+
+import { init } from './init'
+import { ChangedUrl, ClickedLink, Message } from './message'
+import { Model } from './model'
+import { subscriptions } from './subscription'
+import { update } from './update'
+import { view } from './view'
+
+const program = Runtime.makeProgram({
+  Model,
+  init,
+  update,
+  view,
+  subscriptions,
+  container: document.getElementById('root'),
+  devTools: {
+    Message,
+    mode: 'TimeTravel',
+  },
+  routing: {
+    onUrlRequest: request => ClickedLink({ request }),
+    onUrlChange: url => ChangedUrl({ url }),
+  },
+})
+
+Runtime.run(program)

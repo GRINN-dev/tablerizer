@@ -1,0 +1,181 @@
+import { Ui } from 'foldkit'
+import { Html, html } from 'foldkit/html'
+
+import {
+  GotHorizontalRadioGroupDemoMessage,
+  GotVerticalRadioGroupDemoMessage,
+  type UiMessage,
+} from '../message'
+import type { UiModel } from '../model'
+
+type Plan = 'Startup' | 'Business' | 'Enterprise'
+
+const plans: ReadonlyArray<Plan> = ['Startup', 'Business', 'Enterprise']
+
+const planDescriptions: Record<Plan, string> = {
+  Startup: '12GB / 6 CPUs — Perfect for small projects',
+  Business: '16GB / 8 CPUs — For growing teams',
+  Enterprise: '32GB / 12 CPUs — Dedicated infrastructure',
+}
+
+const planPrices: Record<Plan, string> = {
+  Startup: '$40/mo',
+  Business: '$80/mo',
+  Enterprise: '$160/mo',
+}
+
+const verticalGroupClassName = 'flex flex-col gap-3 w-full'
+
+const verticalOptionClassName =
+  'relative flex cursor-pointer rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50 data-[checked]:border-accent-600 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2'
+
+const horizontalGroupClassName = 'flex flex-col sm:flex-row gap-3 w-full'
+
+const horizontalOptionClassName =
+  'relative flex flex-1 cursor-pointer rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50 data-[checked]:border-accent-600 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2'
+
+const labelClassName = 'text-sm font-medium text-gray-900'
+
+const descriptionClassName = 'text-sm text-gray-600'
+
+const priceClassName = 'text-sm font-semibold text-accent-600'
+
+const checkIcon = <ParentMessage>(): Html => {
+  const h = html<ParentMessage>()
+
+  return h.svg(
+    [h.ViewBox('0 0 24 24'), h.Fill('none'), h.Class('size-5 text-accent-600')],
+    [
+      h.path(
+        [
+          h.D('M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z'),
+          h.Stroke('currentColor'),
+          h.StrokeWidth('1.5'),
+          h.StrokeLinecap('round'),
+          h.StrokeLinejoin('round'),
+        ],
+        [],
+      ),
+    ],
+  )
+}
+
+const checkPlaceholder = <ParentMessage>(): Html => {
+  const h = html<ParentMessage>()
+
+  return h.div([h.Class('size-5')], [])
+}
+
+export const view = <ParentMessage>(
+  model: UiModel,
+  toParentMessage: (message: UiMessage) => ParentMessage,
+): Html => {
+  const h = html<ParentMessage>()
+
+  return h.div(
+    [],
+    [
+      h.h2([h.Class('text-2xl font-bold text-gray-900 mb-6')], ['Radio Group']),
+
+      h.h3(
+        [h.Class('text-lg font-semibold text-gray-900 mt-8 mb-4')],
+        ['Vertical'],
+      ),
+      Ui.RadioGroup.view<ParentMessage, Plan>({
+        model: model.verticalRadioGroupDemo,
+        toParentMessage: message =>
+          toParentMessage(GotVerticalRadioGroupDemoMessage({ message })),
+        options: plans,
+        ariaLabel: 'Server plan',
+        optionToConfig: (plan, { isSelected }) => ({
+          value: plan,
+          content: attributes =>
+            h.div(
+              [...attributes.option, h.Class(verticalOptionClassName)],
+              [
+                h.div(
+                  [h.Class('flex w-full items-center justify-between')],
+                  [
+                    h.div(
+                      [],
+                      [
+                        h.span(
+                          [...attributes.label, h.Class(labelClassName)],
+                          [plan],
+                        ),
+                        h.p(
+                          [
+                            ...attributes.description,
+                            h.Class(descriptionClassName),
+                          ],
+                          [planDescriptions[plan]],
+                        ),
+                      ],
+                    ),
+                    h.div(
+                      [h.Class('flex items-center gap-3')],
+                      [
+                        h.span([h.Class(priceClassName)], [planPrices[plan]]),
+                        isSelected
+                          ? checkIcon<ParentMessage>()
+                          : checkPlaceholder<ParentMessage>(),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+        }),
+        attributes: [h.Class(verticalGroupClassName)],
+      }),
+
+      h.h3(
+        [h.Class('text-lg font-semibold text-gray-900 mt-8 mb-4')],
+        ['Horizontal'],
+      ),
+      Ui.RadioGroup.view<ParentMessage, Plan>({
+        model: model.horizontalRadioGroupDemo,
+        toParentMessage: message =>
+          toParentMessage(GotHorizontalRadioGroupDemoMessage({ message })),
+        options: plans,
+        ariaLabel: 'Server plan',
+        optionToConfig: (plan, { isSelected }) => ({
+          value: plan,
+          content: attributes =>
+            h.div(
+              [...attributes.option, h.Class(horizontalOptionClassName)],
+              [
+                h.div(
+                  [h.Class('flex w-full items-center justify-between')],
+                  [
+                    h.div(
+                      [],
+                      [
+                        h.span(
+                          [...attributes.label, h.Class(labelClassName)],
+                          [plan],
+                        ),
+                        h.p(
+                          [
+                            ...attributes.description,
+                            h.Class(descriptionClassName),
+                          ],
+                          [planDescriptions[plan]],
+                        ),
+                      ],
+                    ),
+                    isSelected
+                      ? checkIcon<ParentMessage>()
+                      : checkPlaceholder<ParentMessage>(),
+                  ],
+                ),
+                h.span([h.Class(priceClassName + ' mt-2')], [planPrices[plan]]),
+              ],
+            ),
+        }),
+        orientation: 'Horizontal',
+        attributes: [h.Class(horizontalGroupClassName)],
+      }),
+    ],
+  )
+}
