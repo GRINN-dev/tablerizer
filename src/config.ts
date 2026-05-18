@@ -110,17 +110,18 @@ export function normalizeScope(scope?: ExportScope | ExportScope[]): Exclude<Exp
 
 function expandEnvVars(
   value: string,
-  env: Record<string, string | undefined> = process.env,
+  env?: Record<string, string | undefined>,
 ): string {
+  const resolvedEnv = env ?? process.env
   return value.replace(
     /\$\{([^}]+)\}|\$([A-Z_][A-Z0-9_]*)/g,
     (match, braced, simple) => {
       const varName = braced || simple
       if (braced && braced.includes(":")) {
         const [envVar, defaultValue] = braced.split(":", 2)
-        return env[envVar] || defaultValue
+        return resolvedEnv[envVar] || defaultValue
       }
-      return env[varName] || match
+      return resolvedEnv[varName] || match
     },
   )
 }
