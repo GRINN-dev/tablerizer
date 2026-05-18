@@ -1,6 +1,6 @@
 {
   "name": "tablerizer",
-  "version": "2.0.0",
+  "version": "3.0.0-beta.0",
   "description": "🎲 Tablerizer - The PostgreSQL table export wizard! Generate SQL files for RBAC, RLS, triggers, and schema documentation",
   "main": "./lib/index.js",
   "module": "./lib/index.js",
@@ -38,7 +38,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build src/index.ts src/cli.ts src/config.ts src/database.ts src/generators.ts --outdir lib --target node",
+    "build": "tsc",
     "dev": "tsc --watch",
     "start": "bun bin/tablerizer.js",
     "help": "bun bin/tablerizer.js --help",
