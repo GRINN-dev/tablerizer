@@ -66,7 +66,6 @@ export { SqlError } from "@effect/sql/SqlError"
 export const makeDbLayer = (
   connectionString: string,
 ): Layer<PgClient.PgClient | import("@effect/sql").SqlClient.SqlClient, SqlError> => {
-  console.log("[debug] makeDbLayer connectionString:", connectionString)
   const url = new URL(connectionString)
   const sslMode = url.searchParams.get("sslmode") ?? url.searchParams.get("ssl")
   const ssl = sslMode === "require" || sslMode === "prefer" || sslMode === "true"

@@ -26,8 +26,8 @@ export function applyRoleMappings(
     const patterns = [
       // GRANT/REVOKE TO/FROM role
       new RegExp(`\\b(TO|FROM)\\s+"?${actualRole}"?\\b`, "gi"),
-      // Role in policy definitions
-      new RegExp(`\\b"?${actualRole}"?\\b(?=\\s*[,;)])`, "gi"),
+      // Role in policy definitions, comments, and end-of-line contexts
+      new RegExp(`\\b"?${actualRole}"?\\b(?=\\s*[,;)]|$)`, "gim"),
     ];
 
     for (const pattern of patterns) {
