@@ -1,0 +1,254 @@
+{
+  "name": "foldkit",
+  "version": "0.100.1",
+  "description": "A TypeScript frontend framework, built on Effect and architected like Elm",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./calendar": {
+      "types": "./dist/calendar/public.d.ts",
+      "import": "./dist/calendar/public.js"
+    },
+    "./canvas": {
+      "types": "./dist/canvas/public.d.ts",
+      "import": "./dist/canvas/public.js"
+    },
+    "./command": {
+      "types": "./dist/command/public.d.ts",
+      "import": "./dist/command/public.js"
+    },
+    "./customElement": {
+      "types": "./dist/customElement/public.d.ts",
+      "import": "./dist/customElement/public.js"
+    },
+    "./dom": {
+      "types": "./dist/dom/public.d.ts",
+      "import": "./dist/dom/public.js"
+    },
+    "./html": {
+      "types": "./dist/html/public.d.ts",
+      "import": "./dist/html/public.js"
+    },
+    "./managedResource": {
+      "types": "./dist/managedResource/public.d.ts",
+      "import": "./dist/managedResource/public.js"
+    },
+    "./message": {
+      "types": "./dist/message/public.d.ts",
+      "import": "./dist/message/public.js"
+    },
+    "./mount": {
+      "types": "./dist/mount/public.d.ts",
+      "import": "./dist/mount/public.js"
+    },
+    "./navigation": {
+      "types": "./dist/navigation/public.d.ts",
+      "import": "./dist/navigation/public.js"
+    },
+    "./render": {
+      "types": "./dist/render/public.d.ts",
+      "import": "./dist/render/public.js"
+    },
+    "./route": {
+      "types": "./dist/route/public.d.ts",
+      "import": "./dist/route/public.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/public.d.ts",
+      "import": "./dist/runtime/public.js"
+    },
+    "./scene": {
+      "types": "./dist/scene/public.d.ts",
+      "import": "./dist/scene/public.js"
+    },
+    "./story": {
+      "types": "./dist/story/public.d.ts",
+      "import": "./dist/story/public.js"
+    },
+    "./hmr-protocol": {
+      "types": "./dist/runtime/hmrProtocolPublic.d.ts",
+      "import": "./dist/runtime/hmrProtocolPublic.js"
+    },
+    "./fieldValidation": {
+      "types": "./dist/fieldValidation/public.d.ts",
+      "import": "./dist/fieldValidation/public.js"
+    },
+    "./file": {
+      "types": "./dist/file/public.d.ts",
+      "import": "./dist/file/public.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/public.d.ts",
+      "import": "./dist/schema/public.js"
+    },
+    "./struct": {
+      "types": "./dist/struct/public.d.ts",
+      "import": "./dist/struct/public.js"
+    },
+    "./subscription": {
+      "types": "./dist/subscription/public.d.ts",
+      "import": "./dist/subscription/public.js"
+    },
+    "./test": {
+      "types": "./dist/test/public.d.ts",
+      "import": "./dist/test/public.js"
+    },
+    "./test/vitest": {
+      "types": "./dist/test/vitest.d.ts",
+      "import": "./dist/test/vitest.js"
+    },
+    "./ui": {
+      "types": "./dist/ui/index.d.ts",
+      "import": "./dist/ui/index.js"
+    },
+    "./ui/animation": {
+      "types": "./dist/ui/animation/public.d.ts",
+      "import": "./dist/ui/animation/public.js"
+    },
+    "./ui/button": {
+      "types": "./dist/ui/button/public.d.ts",
+      "import": "./dist/ui/button/public.js"
+    },
+    "./ui/calendar": {
+      "types": "./dist/ui/calendar/public.d.ts",
+      "import": "./dist/ui/calendar/public.js"
+    },
+    "./ui/checkbox": {
+      "types": "./dist/ui/checkbox/public.d.ts",
+      "import": "./dist/ui/checkbox/public.js"
+    },
+    "./ui/dialog": {
+      "types": "./dist/ui/dialog/public.d.ts",
+      "import": "./dist/ui/dialog/public.js"
+    },
+    "./ui/disclosure": {
+      "types": "./dist/ui/disclosure/public.d.ts",
+      "import": "./dist/ui/disclosure/public.js"
+    },
+    "./ui/fieldset": {
+      "types": "./dist/ui/fieldset/public.d.ts",
+      "import": "./dist/ui/fieldset/public.js"
+    },
+    "./ui/input": {
+      "types": "./dist/ui/input/public.d.ts",
+      "import": "./dist/ui/input/public.js"
+    },
+    "./ui/listbox": {
+      "types": "./dist/ui/listbox/public.d.ts",
+      "import": "./dist/ui/listbox/public.js"
+    },
+    "./ui/combobox": {
+      "types": "./dist/ui/combobox/public.d.ts",
+      "import": "./dist/ui/combobox/public.js"
+    },
+    "./ui/menu": {
+      "types": "./dist/ui/menu/public.d.ts",
+      "import": "./dist/ui/menu/public.js"
+    },
+    "./ui/popover": {
+      "types": "./dist/ui/popover/public.d.ts",
+      "import": "./dist/ui/popover/public.js"
+    },
+    "./ui/radioGroup": {
+      "types": "./dist/ui/radioGroup/public.d.ts",
+      "import": "./dist/ui/radioGroup/public.js"
+    },
+    "./ui/select": {
+      "types": "./dist/ui/select/public.d.ts",
+      "import": "./dist/ui/select/public.js"
+    },
+    "./ui/slider": {
+      "types": "./dist/ui/slider/public.d.ts",
+      "import": "./dist/ui/slider/public.js"
+    },
+    "./ui/switch": {
+      "types": "./dist/ui/switch/public.d.ts",
+      "import": "./dist/ui/switch/public.js"
+    },
+    "./ui/textarea": {
+      "types": "./dist/ui/textarea/public.d.ts",
+      "import": "./dist/ui/textarea/public.js"
+    },
+    "./ui/tabs": {
+      "types": "./dist/ui/tabs/public.d.ts",
+      "import": "./dist/ui/tabs/public.js"
+    },
+    "./ui/toast": {
+      "types": "./dist/ui/toast/public.d.ts",
+      "import": "./dist/ui/toast/public.js"
+    },
+    "./ui/tooltip": {
+      "types": "./dist/ui/tooltip/public.d.ts",
+      "import": "./dist/ui/tooltip/public.js"
+    },
+    "./ui/virtualList": {
+      "types": "./dist/ui/virtualList/public.d.ts",
+      "import": "./dist/ui/virtualList/public.js"
+    },
+    "./url": {
+      "types": "./dist/url/public.d.ts",
+      "import": "./dist/url/public.js"
+    },
+    "./devtools-protocol": {
+      "types": "./dist/devTools/public.d.ts",
+      "import": "./dist/devTools/public.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rimraf dist *.tsbuildinfo",
+    "build": "pnpm run clean && node scripts/inline-css.js && tsc -b tsconfig.build.json",
+    "watch": "node scripts/inline-css.js && tsc -b tsconfig.build.json --watch",
+    "lint": "eslint src",
+    "typecheck": "node scripts/inline-css.js && tsc -b tsconfig.build.json --noEmit",
+    "test": "vitest run",
+    "docs": "typedoc"
+  },
+  "peerDependencies": {
+    "@effect/platform-browser": "4.0.0-beta.66",
+    "effect": "4.0.0-beta.66"
+  },
+  "devDependencies": {
+    "@effect/platform-browser": "4.0.0-beta.66",
+    "@effect/vitest": "4.0.0-beta.66",
+    "effect": "4.0.0-beta.66",
+    "happy-dom": "^20.9.0",
+    "rimraf": "^6.1.3",
+    "typedoc": "^0.28.19",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  },
+  "keywords": [
+    "effect",
+    "ui",
+    "elm",
+    "functional",
+    "typescript"
+  ],
+  "author": "Devin Jameson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/foldkit/foldkit.git",
+    "directory": "packages/foldkit"
+  },
+  "dependencies": {
+    "@floating-ui/dom": "^1.7.6",
+    "clsx": "^2.1.1",
+    "snabbdom": "^3.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
