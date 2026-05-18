@@ -65,8 +65,20 @@ export { SqlError } from "@effect/sql/SqlError"
 
 export const makeDbLayer = (
   connectionString: string,
-): Layer<PgClient.PgClient | import("@effect/sql").SqlClient.SqlClient, SqlError> =>
-  PgClient.layer({ url: Redacted.make(connectionString) })
+): Layer<PgClient.PgClient | import("@effect/sql").SqlClient.SqlClient, SqlError> => {
+  const url = new URL(connectionString)
+  const sslMode = url.searchParams.get("sslmode") ?? url.searchParams.get("ssl")
+  const ssl = sslMode === "require" || sslMode === "prefer" || sslMode === "true"
+    ? { rejectUnauthorized: false }
+    : sslMode === "verify-full"
+      ? true
+      : undefined
+
+  return PgClient.layer({
+    url: Redacted.make(connectionString),
+    ssl,
+  })
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES DE DONNÉES (inchangés — ce sont de pures structures)

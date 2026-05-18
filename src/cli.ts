@@ -291,6 +291,7 @@ const cliProgram: Effect.Effect<void, never> = pipe(
     SqlError: (e) =>
       Effect.sync(() => {
         displayError(`Database error: ${e.message}`)
+        if (e.cause) console.error("  Cause:", e.cause)
         process.exit(1)
       }),
     ScanError: (e) =>
