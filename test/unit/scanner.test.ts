@@ -1,30 +1,25 @@
 /**
- * Scanner tests — adaptés pour Effect-TS
+ * Scanner tests — adaptés pour @effect/sql
  *
  * CONCEPT — Tester avec des services mockés (Layer.succeed)
  *
- * Avant : on passait un mock DatabaseConnection en argument.
- * Après : on crée un Layer mock et on le fournit avec Effect.provide.
+ * On mock SqlClient.SqlClient au lieu de notre ancien DatabaseConnection.
+ * Le SqlClient a besoin d'une méthode `unsafe()` qui retourne
+ * quelque chose de "yieldable" (un Effect, en gros).
  *
- * C'est le même principe que le DI dans les tests Java/Spring,
- * mais sans framework, sans annotations, juste le type system.
- *
- *   const mockLayer = Layer.succeed(DatabaseConnection, {
- *     query: (sql) => Effect.succeed(fakeData)
- *   })
- *
- *   const result = await Effect.runPromise(
- *     pipe(scan(...), Effect.provide(mockLayer))
- *   )
+ * On utilise `as any` pour le mock car l'interface complète de
+ * SqlClient est riche (template tags, transactions, etc.) mais
+ * nos queries n'utilisent que `unsafe()`.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Effect, Layer, pipe, Either } from "effect";
+import { SqlClient } from "@effect/sql";
 import { scan, scanTable, scanFunction, type ObjectDescriptor } from "../../src/scanner.js";
-import { DatabaseConnection, type FunctionInfo, type MaterializedViewInfo } from "../../src/database.js";
+import { type FunctionInfo, type MaterializedViewInfo } from "../../src/database.js";
 
-function mockDatabaseLayer(data: {
+function mockSqlLayer(data: {
   tables?: { table_name: string }[];
   functions?: Partial<FunctionInfo>[];
   materializedViews?: Partial<MaterializedViewInfo>[];
@@ -32,8 +27,8 @@ function mockDatabaseLayer(data: {
   matviewGrants?: any[];
   matviewIndexes?: any[];
 }) {
-  return Layer.succeed(DatabaseConnection, {
-    query: <T = any>(text: string, _params?: any[]) => {
+  const mockClient = {
+    unsafe: <T = any>(text: string, _params?: any[]) => {
       if (text.includes("relname as table_name") && !text.includes("pg_index")) {
         return Effect.succeed(data.tables ?? []) as Effect.Effect<T[], any>;
       }
@@ -59,7 +54,8 @@ function mockDatabaseLayer(data: {
       if (text.includes("table_privileges")) return Effect.succeed(data.matviewGrants ?? []) as Effect.Effect<T[], any>;
       return Effect.succeed([]) as Effect.Effect<T[], any>;
     },
-  });
+  };
+  return Layer.succeed(SqlClient.SqlClient, mockClient as any);
 }
 
 function fakeFunctionInfo(name: string, args = ""): FunctionInfo {
@@ -90,12 +86,11 @@ function fakeMatviewInfo(name: string): MaterializedViewInfo {
   };
 }
 
-// Helper : exécute un Effect avec un mock database layer
 function runWithMock<A, E>(
-  effect: Effect.Effect<A, E, DatabaseConnection>,
-  data: Parameters<typeof mockDatabaseLayer>[0],
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+  data: Parameters<typeof mockSqlLayer>[0],
 ): Promise<A> {
-  return Effect.runPromise(pipe(effect, Effect.provide(mockDatabaseLayer(data))));
+  return Effect.runPromise(pipe(effect, Effect.provide(mockSqlLayer(data))));
 }
 
 describe("scan", () => {
@@ -203,11 +198,10 @@ describe("scanFunction", () => {
   });
 
   it("fails with ScanError when function name is not found", async () => {
-    // On utilise Effect.either pour capturer l'erreur sans throw
     const result = await Effect.runPromise(
       pipe(
         Effect.either(scanFunction("app_public", "nonexistent")),
-        Effect.provide(mockDatabaseLayer({ functions: [fakeFunctionInfo("authenticate")] })),
+        Effect.provide(mockSqlLayer({ functions: [fakeFunctionInfo("authenticate")] })),
       ),
     );
 
@@ -231,10 +225,10 @@ describe("scanTable", () => {
   });
 
   it("fails with ScanError when table is not found", async () => {
-    const emptyLayer = Layer.succeed(DatabaseConnection, {
-      query: <T = any>(_text: string, _params?: any[]) =>
+    const emptyLayer = Layer.succeed(SqlClient.SqlClient, {
+      unsafe: <T = any>(_text: string, _params?: any[]) =>
         Effect.succeed([]) as Effect.Effect<T[], any>,
-    });
+    } as any);
 
     const result = await Effect.runPromise(
       pipe(

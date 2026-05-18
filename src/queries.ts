@@ -2,15 +2,15 @@
  * Database queries for Tablerizer — Effect-TS version
  *
  * CONCEPTS EFFECT INTRODUITS :
- *   1. Effect.gen     → écrire du code Effect comme du async/await
- *   2. yield*         → "donne-moi le service" OU "exécute cet Effect"
- *   3. Propagation automatique de R (Requirements)
+ *   1. SqlClient.SqlClient  → le service standard pour les queries SQL
+ *   2. sql.unsafe()         → exécuter du SQL brut avec des paramètres
+ *   3. Statement<A>         → c'est un Effect ! On peut le yield* directement
  */
 
 import { Effect, pipe } from "effect"
+import { SqlClient } from "@effect/sql"
+import type { SqlError } from "@effect/sql/SqlError"
 import {
-  DatabaseConnection,
-  DatabaseError,
   type FunctionInfo,
   type ColumnDefinition,
   type ConstraintDefinition,
@@ -20,105 +20,67 @@ import {
 } from "./database.js"
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// CONCEPT — Effect.gen (la "killer feature" pour la lisibilité)
+// CONCEPT — SqlClient et sql.unsafe()
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Effect.gen utilise les générateurs JS (function*) pour écrire
-// du code Effect qui RESSEMBLE à du async/await :
+// Avant (notre code custom) :
+//   const db = yield* DatabaseConnection    // notre Tag fait main
+//   const rows = yield* db.query<T>(sql, params)
 //
-//   // async/await (vanilla)
-//   async function getUser(id: string) {
-//     const db = getDb()              // dépendance manuelle
-//     const row = await db.query(sql) // await = exécute la Promise
-//     return row
-//   }
+// Après (@effect/sql) :
+//   const sql = yield* SqlClient.SqlClient  // le Tag standard
+//   const rows = yield* sql.unsafe<T>(sqlText, params)
 //
-//   // Effect.gen
-//   const getUser = (id: string) =>
-//     Effect.gen(function* () {
-//       const db = yield* DatabaseConnection  // yield* Tag = accède au service
-//       const row = yield* db.query(sql)      // yield* Effect = exécute l'Effect
-//       return row
-//     })
+// sql.unsafe() retourne un Statement<T> qui EST un Effect.
+// Donc yield* l'exécute directement et donne les rows.
 //
-// yield* fait DEUX choses selon ce qu'on lui passe :
-//   yield* MonTag        → "donne-moi le service MonTag du contexte"
-//   yield* unEffect      → "exécute cet Effect et donne-moi le résultat"
+// "unsafe" ne veut pas dire "dangereux" — ça veut dire
+// "pas de template literal tag". C'est pour les requêtes
+// SQL dynamiques ou avec des paramètres $1, $2.
 //
-// C'est le dual de await : await résout une Promise,
-// yield* résout un Effect (ou accède à un service).
-//
-// CONCEPT — Propagation automatique de Requirements
-//
-// Regarde le type de retour de getTables :
-//   Effect.Effect<Array<...>, DatabaseError, DatabaseConnection>
-//                                            ^^^^^^^^^^^^^^^^^^
-// TypeScript INFÈRE automatiquement que cette fonction a besoin
-// de DatabaseConnection, parce qu'on fait yield* DatabaseConnection
-// dedans. Si tu composes deux fonctions qui utilisent la DB,
-// le besoin ne se duplique pas — il s'unifie.
-//
-// C'est le superpouvoir : tu n'as JAMAIS besoin de passer
-// `connection` en paramètre. La dépendance voyage dans le type.
+// Pour les requêtes statiques, on pourrait utiliser :
+//   sql`SELECT * FROM users WHERE id = ${id}`
+// Mais nos queries utilisent $1/$2, donc unsafe convient.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// --- Première fonction : version longue pour montrer le pattern ---
+// --- Helper : factoriser le pattern répétitif ---
+
+const query = <T extends object>(
+  sqlText: string,
+  params?: any[],
+): Effect.Effect<ReadonlyArray<T>, SqlError, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    return yield* sql.unsafe<T>(sqlText, params)
+  })
+
+// --- Première fonction : version commentée ---
 
 export const getTables = (
   schema: string,
-): Effect.Effect<Array<{ table_name: string }>, DatabaseError, DatabaseConnection> =>
-  Effect.gen(function* () {
-    // yield* DatabaseConnection → accède au service depuis le contexte
-    // Pas besoin de le passer en paramètre !
-    const db = yield* DatabaseConnection
-
-    // yield* db.query(...) → exécute la query (comme await)
-    // Si la query échoue → DatabaseError (typé !)
-    return yield* db.query<{ table_name: string }>(
-      `
-      SELECT c.relname as table_name
-      FROM pg_class c
-      JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE (c.relkind = 'r' OR c.relkind = 'p')
-        AND n.nspname = $1
-        AND NOT EXISTS (
-          SELECT 1 FROM pg_inherits i
-          JOIN pg_class parent ON parent.oid = i.inhparent
-          WHERE i.inhrelid = c.oid AND parent.relkind = 'p'
-        )
-      ORDER BY c.relname
-      `,
-      [schema],
-    )
-  })
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// HELPER : factoriser le pattern répétitif
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//
-// Toutes nos fonctions font la même chose :
-//   1. accéder à DatabaseConnection
-//   2. exécuter une query
-//
-// On factorise ça dans un helper. C'est un pattern courant en
-// Effect : créer des "accessors" qui simplifient l'accès aux
-// services.
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-const query = <T = any>(
-  sql: string,
-  params?: any[],
-): Effect.Effect<T[], DatabaseError, DatabaseConnection> =>
-  Effect.gen(function* () {
-    const db = yield* DatabaseConnection
-    return yield* db.query<T>(sql, params)
-  })
+): Effect.Effect<ReadonlyArray<{ table_name: string }>, SqlError, SqlClient.SqlClient> =>
+  query<{ table_name: string }>(
+    `
+    SELECT c.relname as table_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE (c.relkind = 'r' OR c.relkind = 'p')
+      AND n.nspname = $1
+      AND NOT EXISTS (
+        SELECT 1 FROM pg_inherits i
+        JOIN pg_class parent ON parent.oid = i.inhparent
+        WHERE i.inhrelid = c.oid AND parent.relkind = 'p'
+      )
+    ORDER BY c.relname
+    `,
+    [schema],
+  )
 
 // --- Toutes les queries utilisent maintenant le helper ---
 
 export const getFunctions = (
   schema: string,
-): Effect.Effect<FunctionInfo[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<FunctionInfo>, SqlError, SqlClient.SqlClient> =>
   query<FunctionInfo>(
     `
     SELECT
@@ -152,7 +114,7 @@ export const getFunctions = (
 
 export const getMaterializedViews = (
   schema: string,
-): Effect.Effect<MaterializedViewInfo[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<MaterializedViewInfo>, SqlError, SqlClient.SqlClient> =>
   query<MaterializedViewInfo>(
     `
     SELECT
@@ -175,7 +137,7 @@ export const getMaterializedViews = (
 export const getMaterializedViewIndexes = (
   schema: string,
   matviewName: string,
-): Effect.Effect<Array<{ index_name: string; index_definition: string }>, DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<{ index_name: string; index_definition: string }>, SqlError, SqlClient.SqlClient> =>
   query<{ index_name: string; index_definition: string }>(
     `
     SELECT
@@ -204,7 +166,7 @@ export interface TableInfo {
 export const getTableInfo = (
   schema: string,
   tableName: string,
-): Effect.Effect<TableInfo | null, DatabaseError, DatabaseConnection> =>
+): Effect.Effect<TableInfo | null, SqlError, SqlClient.SqlClient> =>
   pipe(
     query<TableInfo>(
       `
@@ -216,14 +178,13 @@ export const getTableInfo = (
       `,
       [schema, tableName],
     ),
-    // Effect.map transforme le résultat sans changer les erreurs ni les requirements
     Effect.map((rows) => rows[0] ?? null),
   )
 
 export const getColumnDefinitions = (
   schema: string,
   tableName: string,
-): Effect.Effect<ColumnDefinition[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<ColumnDefinition>, SqlError, SqlClient.SqlClient> =>
   query<ColumnDefinition>(
     `
     SELECT
@@ -249,7 +210,7 @@ export const getColumnDefinitions = (
 export const getConstraintDefinitions = (
   schema: string,
   tableName: string,
-): Effect.Effect<ConstraintDefinition[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<ConstraintDefinition>, SqlError, SqlClient.SqlClient> =>
   query<ConstraintDefinition>(
     `
     SELECT
@@ -277,7 +238,7 @@ export const getConstraintDefinitions = (
 export const getIndexDefinitions = (
   schema: string,
   tableName: string,
-): Effect.Effect<IndexDefinition[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<IndexDefinition>, SqlError, SqlClient.SqlClient> =>
   query<IndexDefinition>(
     `
     SELECT
@@ -303,7 +264,7 @@ export const getIndexDefinitions = (
 export const getPartitionInfo = (
   schema: string,
   tableName: string,
-): Effect.Effect<PartitionInfo | null, DatabaseError, DatabaseConnection> =>
+): Effect.Effect<PartitionInfo | null, SqlError, SqlClient.SqlClient> =>
   pipe(
     query<{ partition_strategy: string; partition_key: string }>(
       `
@@ -327,21 +288,20 @@ export const getPartitionInfo = (
 
 export type GrantSource = "table" | "column"
 
-// getGrants a de la logique conditionnelle → on utilise Effect.gen
 export const getGrants = (
   schema: string,
   objectName: string,
   source: GrantSource,
   roles?: string[],
-): Effect.Effect<any[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<any>, SqlError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
-    const db = yield* DatabaseConnection
+    const sql = yield* SqlClient.SqlClient
     const roleFilter = roles ? `AND grantee = ANY($3::text[])` : ""
     const params: any[] = [schema, objectName]
     if (roles) params.push(`{${roles.join(",")}}`)
 
     if (source === "column") {
-      return yield* db.query(
+      return yield* sql.unsafe(
         `
         SELECT column_name, grantor, grantee, privilege_type as privilege, is_grantable::boolean
         FROM information_schema.column_privileges
@@ -352,7 +312,7 @@ export const getGrants = (
       )
     }
 
-    return yield* db.query(
+    return yield* sql.unsafe(
       `
       SELECT grantor, grantee, privilege_type as privilege, is_grantable::boolean
       FROM information_schema.table_privileges
@@ -366,7 +326,7 @@ export const getGrants = (
 export const getPolicies = (
   schema: string,
   tableName: string,
-): Effect.Effect<any[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<any>, SqlError, SqlClient.SqlClient> =>
   query(
     `
     SELECT
@@ -389,7 +349,7 @@ export const getPolicies = (
 export const getTriggers = (
   schema: string,
   tableName: string,
-): Effect.Effect<any[], DatabaseError, DatabaseConnection> =>
+): Effect.Effect<ReadonlyArray<any>, SqlError, SqlClient.SqlClient> =>
   query(
     `
     SELECT
@@ -410,7 +370,7 @@ export const getTriggers = (
 export const getTableComment = (
   schema: string,
   tableName: string,
-): Effect.Effect<string | undefined, DatabaseError, DatabaseConnection> =>
+): Effect.Effect<string | undefined, SqlError, SqlClient.SqlClient> =>
   pipe(
     query<{ comment: string }>(
       `

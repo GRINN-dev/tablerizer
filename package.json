@@ -90,9 +90,8 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@effect/cli": "^0.75.1",
-    "@effect/platform": "^0.96.1",
-    "@effect/schema": "^0.75.5",
+    "@effect/sql": "^0.51.1",
+    "@effect/sql-pg": "^0.52.1",
     "effect": "^3.21.2"
   },
   "peerDependencies": {

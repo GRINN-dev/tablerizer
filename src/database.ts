@@ -2,143 +2,71 @@
  * Database layer for Tablerizer — Effect-TS version
  *
  * CONCEPTS EFFECT INTRODUITS :
- *   1. Context.Tag        → déclarer un service injectable
- *   2. Layer              → fournir l'implémentation d'un service
- *   3. acquireRelease     → gestion de ressources (comme try/finally)
- *   4. Effect.tryPromise  → wrapper une Promise dans un Effect
+ *   1. @effect/sql     → SqlClient, le service standard pour les queries
+ *   2. @effect/sql-pg  → PgClient, l'implémentation PostgreSQL
+ *   3. Layer.Layer     → le Layer est fourni par PgClient.layer()
+ *
+ * AVANT (notre code custom) :
+ *   • DatabaseConnection — un Context.Tag fait main
+ *   • PostgresConnectionLive — un Layer fait main avec acquireRelease
+ *   • DatabaseError — une erreur custom
+ *
+ * APRÈS (@effect/sql) :
+ *   • SqlClient.SqlClient — le Tag standard fourni par Effect
+ *   • PgClient.layer()    — le Layer standard fourni par @effect/sql-pg
+ *   • SqlError            — l'erreur standard fournie par @effect/sql
+ *
+ * Pourquoi c'est mieux ?
+ *   • Plus besoin de gérer connect/disconnect manuellement
+ *   • Connection pooling intégré
+ *   • Compatible avec tout l'écosystème Effect (migrations, schemas, etc.)
+ *   • On réutilise du code testé par la communauté
  */
 
-import { Context, Effect, Layer, Data, pipe } from "effect"
-import { SQL } from "bun"
+import { Redacted } from "effect"
+import * as PgClient from "@effect/sql-pg/PgClient"
+import type { Layer } from "effect/Layer"
+import type { SqlError } from "@effect/sql/SqlError"
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ERREUR TYPÉE
+// RE-EXPORTS pour simplifier les imports dans le reste du code
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export class DatabaseError extends Data.TaggedError("DatabaseError")<{
-  readonly message: string
-  readonly cause: unknown
-}> {}
+export { SqlClient } from "@effect/sql"
+export { SqlError } from "@effect/sql/SqlError"
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SERVICE : DatabaseConnection (Context.Tag)
+// LAYER : makeDbLayer
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// CONCEPT — Context.Tag
+// CONCEPT — PgClient.layer
 //
-// Un Tag déclare qu'un SERVICE existe, sans dire COMMENT le créer.
-// C'est l'équivalent d'une interface dans un framework DI classique,
-// mais avec une différence cruciale : c'est dans le TYPE.
+// PgClient.layer() est l'équivalent de notre ancien
+// PostgresConnectionLive, mais en MIEUX :
+//   • Connection pooling automatique
+//   • Gestion du cycle de vie (acquireRelease) intégrée
+//   • Compatible avec les transactions, les streams, etc.
 //
-// Quand une fonction a besoin de la DB, son type le dit :
+// Le Layer fournit DEUX services :
+//   PgClient (spécifique PostgreSQL — listen/notify, json, etc.)
+//   SqlClient (générique — queries, transactions)
 //
-//   Effect<User[], DatabaseError, DatabaseConnection>
-//                                 ^^^^^^^^^^^^^^^^^^
-//                                 "j'ai besoin de ce service"
+// Notre code n'utilise que SqlClient, ce qui le rend portable :
+// on pourrait théoriquement swapper pour MySQL/SQLite sans
+// toucher aux queries.
 //
-// Si tu oublies de fournir le service → erreur de compilation.
-// Pas de "container.resolve()" au runtime, pas de NullPointerException.
+// CONCEPT — Redacted
 //
-// Compare avec l'ancien code :
-//   AVANT : function getUsers(db: DatabaseConnection) → dépendance en param
-//   APRÈS : Effect<User[], Error, DatabaseConnection>  → dépendance dans le type
-//
-// La différence ? Avec Effect, la dépendance se PROPAGE automatiquement
-// dans la composition. Tu n'as pas besoin de la passer manuellement
-// à travers 10 couches d'appels.
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-export class DatabaseConnection extends Context.Tag("DatabaseConnection")<
-  DatabaseConnection,
-  {
-    readonly query: <T = any>(text: string, params?: any[]) => Effect.Effect<T[], DatabaseError>
-  }
->() {}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// LAYER : BunSQLConnectionLive
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//
-// CONCEPT — Layer
-//
-// Un Layer est une RECETTE pour construire un service.
-// C'est le chaînon manquant entre "j'ai besoin de DatabaseConnection"
-// et "voici comment la créer avec Bun SQL".
-//
-// L'avantage : tu peux swapper l'implémentation sans toucher au
-// code métier. En test, on pourrait fournir un InMemoryLayer.
-// En prod, on fournit BunSQLConnectionLive. Le code métier ne
-// sait pas et ne se soucie pas de la différence.
-//
-// CONCEPT — Effect.acquireRelease
-//
-// Gère le cycle de vie d'une ressource en 2 phases :
-//   1. acquire : créer/ouvrir la ressource
-//   2. release : fermer/nettoyer la ressource (GARANTI, même en cas d'erreur)
-//
-// C'est comme try/finally, mais :
-//   • le compilateur s'assure que release est défini
-//   • la ressource est liée à un "scope" — elle vit tant que le scope existe
-//   • pas de risque de fuites : la fermeture est automatique
-//
-// Dans notre cas :
-//   acquire = new SQL(url) + SELECT 1 (vérification)
-//   release = sql.close()
-//
-// Layer.scoped connecte acquireRelease au Layer :
-// → la connexion est créée quand le Layer est construit
-// → elle est fermée quand le programme se termine
+// L'URL de connexion contient un mot de passe. Effect utilise
+// Redacted pour empêcher qu'il apparaisse dans les logs :
+//   Redacted.make("postgres://user:pass@host/db")
+//   → affiche "<redacted>" au lieu du mot de passe
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export const BunSQLConnectionLive = (
+export const makeDbLayer = (
   connectionString: string,
-): Layer.Layer<DatabaseConnection, DatabaseError> =>
-  Layer.scoped(
-    DatabaseConnection,
-    pipe(
-      // Phase 1 : ACQUIRE — créer la connexion
-      //
-      // Effect.tryPromise wrappe une Promise qui peut rejeter
-      // en un Effect avec erreur typée.
-      //
-      //   AVANT : try { await sql.connect() } catch(e) { ??? }
-      //   APRÈS : Effect.tryPromise({ try, catch })
-      //
-      // La différence : l'erreur est DANS le type, pas cachée.
-      Effect.acquireRelease(
-        Effect.tryPromise({
-          try: async () => {
-            const sql = new SQL(connectionString)
-            await sql.unsafe("SELECT 1")
-            return sql
-          },
-          catch: (cause) =>
-            new DatabaseError({
-              message: `Connection failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-              cause,
-            }),
-        }),
-        // Phase 2 : RELEASE — fermer la connexion
-        // Garanti d'être appelé, même si le programme crash.
-        // Effect.promise = comme tryPromise mais sans erreur attendue
-        (sql) => Effect.promise(() => sql.close()),
-      ),
-      // Transformer la connexion SQL brute en service DatabaseConnection.
-      // Effect.map transforme le résultat SANS affecter le cleanup :
-      // la release function est déjà enregistrée dans le scope.
-      Effect.map((sql) => ({
-        query: <T = any>(text: string, params?: any[]) =>
-          Effect.tryPromise({
-            try: () => sql.unsafe(text, params) as Promise<T[]>,
-            catch: (cause) =>
-              new DatabaseError({
-                message: `Query failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-                cause,
-              }),
-          }),
-      })),
-    ),
-  )
+): Layer<PgClient.PgClient | import("@effect/sql").SqlClient.SqlClient, SqlError> =>
+  PgClient.layer({ url: Redacted.make(connectionString) })
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TYPES DE DONNÉES (inchangés — ce sont de pures structures)

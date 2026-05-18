@@ -22,7 +22,7 @@ import {
   type ConfigValidationError,
   type ConfigFileNotFound,
 } from "./config.js"
-import { BunSQLConnectionLive, type DatabaseError } from "./database.js"
+import { makeDbLayer } from "./database.js"
 import { exportAll, type ExportResult, type ProgressCallback } from "./tablerizer.js"
 import type { ScanError } from "./scanner.js"
 import type { WriteError } from "./writer.js"
@@ -185,25 +185,7 @@ export function displayProcessingStatus(silent?: boolean): void {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// CHARGEMENT DE LA CONFIG (composition d'Effects)
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//
-// CONCEPT — Effect.catchTag
-//
-// Gère UNE erreur spécifique par son _tag, sans toucher aux autres.
-//
-//   pipe(
-//     findConfigFile,                              // Effect<string, ConfigFileNotFound>
-//     Effect.catchTag("ConfigFileNotFound", () =>   // attrape JUSTE ConfigFileNotFound
-//       Effect.succeed(undefined)                   // → pas de fichier, c'est OK
-//     )
-//   )
-//   // Résultat : Effect<string | undefined, never>
-//   //                                       ^^^^^
-//   //            l'erreur a été RETIRÉE du type !
-//
-// C'est comme un catch sélectif : on traite ConfigFileNotFound
-// mais on laisse passer ConfigParseError (qui est une vraie erreur).
+// CHARGEMENT DE LA CONFIG
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 const loadConfig = (
@@ -212,14 +194,10 @@ const loadConfig = (
   Effect.gen(function* () {
     const configPath = getConfigPath(args)
 
-    // Charger le fichier de config (ou {} si pas trouvé)
     const fileConfig = yield* pipe(
-      // Si --config est spécifié, utiliser ce chemin
-      // Sinon, chercher .tablerizerrc (peut échouer avec ConfigFileNotFound)
       configPath
         ? Effect.succeed(configPath)
         : findConfigFile,
-      // Lire et parser le fichier
       Effect.flatMap((filePath) =>
         pipe(
           Effect.try({
@@ -233,20 +211,17 @@ const loadConfig = (
           Effect.flatMap((content) => parseConfigFile(content)),
         ),
       ),
-      // Si pas de fichier trouvé → utiliser un objet vide (c'est normal)
       Effect.catchTag("ConfigFileNotFound", () =>
         Effect.succeed({} as Partial<TablerizerOptions>),
       ),
     )
 
-    // Fusionner les couches : file < env < cli
     const config = resolveConfig({
       file: fileConfig,
       env: parseEnvVars(process.env),
       cli: parseCliArgs(args),
     })
 
-    // Valider la config finale
     return yield* validateConfig(config)
   })
 
@@ -254,34 +229,12 @@ const loadConfig = (
 // PROGRAMME PRINCIPAL
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// CONCEPT — Effect.provide
+// CHANGEMENT : on utilise makeDbLayer() au lieu de
+// PostgresConnectionLive(). Le Layer fournit SqlClient.SqlClient
+// (le Tag standard) au lieu de notre ancien DatabaseConnection.
 //
-// Effect.provide(layer) FOURNIT un service et RETIRE le
-// requirement du type :
-//
-//   exportAll(config)
-//     → Effect<ExportResult, ..., DatabaseConnection>
-//                                  ^^^^^^^^^^^^^^^^^^
-//
-//   pipe(exportAll(config), Effect.provide(BunSQLConnectionLive(url)))
-//     → Effect<ExportResult, ..., never>
-//                                 ^^^^^
-//                                 requirement satisfait !
-//
-// C'est le moment où la "recette" (Layer) est connectée au
-// "programme" (Effect). Le Layer gère connect/disconnect
-// automatiquement via acquireRelease.
-//
-// CONCEPT — Effect.runPromise
-//
-// La FRONTIÈRE entre Effect et le monde "normal".
-// Transforme un Effect<A, E, never> en Promise<A>.
-//
-// runPromise ne peut être appelé que sur un Effect sans requirements
-// (R = never). Si tu oublies un Effect.provide, ça ne compile pas.
-//
-// C'est LE point d'entrée unique. Tout le reste du programme est
-// pur Effect, composable, testable, typé.
+// Dans catchTags, "DatabaseError" devient "SqlError" — c'est
+// l'erreur standard de @effect/sql.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 const cliProgram: Effect.Effect<void, never> = pipe(
@@ -303,10 +256,6 @@ const cliProgram: Effect.Effect<void, never> = pipe(
     displayConfigSummary(config)
     displayConnectionStatus(true, config.silent)
 
-    // exportAll a besoin de DatabaseConnection.
-    // Effect.provide(BunSQLConnectionLive(...)) fournit ce service.
-    // La connexion est créée par le Layer (acquireRelease),
-    // utilisée pendant l'export, puis fermée automatiquement.
     const result = yield* pipe(
       exportAll(config, (progress) => {
         if (!config.silent) {
@@ -314,7 +263,7 @@ const cliProgram: Effect.Effect<void, never> = pipe(
           console.log(`    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${pct}%)`)
         }
       }),
-      Effect.provide(BunSQLConnectionLive(config.database_url!)),
+      Effect.provide(makeDbLayer(config.database_url!)),
     )
 
     displayConnectionStatus(false, config.silent)
@@ -328,13 +277,6 @@ const cliProgram: Effect.Effect<void, never> = pipe(
       silent: config.silent,
     })
   }),
-  // ── Gestion des erreurs ──
-  //
-  // CONCEPT — Effect.catchTags
-  //
-  // Gère CHAQUE type d'erreur séparément par son _tag.
-  // Si tu en oublies un → erreur de compilation.
-  // C'est l'exhaustive error handling, garanti par le compilateur.
   Effect.catchTags({
     ConfigValidationError: (e) =>
       Effect.sync(() => {
@@ -346,7 +288,7 @@ const cliProgram: Effect.Effect<void, never> = pipe(
         displayError(`Configuration error: ${e.message}`)
         process.exit(1)
       }),
-    DatabaseError: (e) =>
+    SqlError: (e) =>
       Effect.sync(() => {
         displayError(`Database error: ${e.message}`)
         process.exit(1)

@@ -7,11 +7,12 @@
  */
 
 import { Effect, pipe } from "effect"
+import { SqlClient } from "@effect/sql"
+import type { SqlError } from "@effect/sql/SqlError"
 import fs from "fs/promises"
 import path from "path"
 import type { ExportScope } from "./config.js"
 import type { ExportResult, ExportProgress, ProgressCallback } from "./tablerizer.js"
-import { DatabaseConnection, DatabaseError } from "./database.js"
 import { ScanError, scan } from "./scanner.js"
 import { generateTableSQL, generateFunctionSQL, generateMaterializedViewSQL, applyRoleMappings } from "./generators/index.js"
 import { writeSnapshots, WriteError } from "./writer.js"
@@ -35,11 +36,10 @@ const OBJECT_TYPE_DIR: Record<string, string> = {
 
 export const runExport = (
   options: ExportPipelineOptions,
-): Effect.Effect<ExportResult, DatabaseError | ScanError | WriteError, DatabaseConnection> =>
+): Effect.Effect<ExportResult, SqlError | ScanError | WriteError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     const baseOutputDir = options.out
 
-    // Clean output directory (ignore errors — dir might not exist)
     if (options.clean) {
       yield* pipe(
         Effect.tryPromise({
@@ -55,13 +55,8 @@ export const runExport = (
       catch: (cause) => new WriteError({ filePath: baseOutputDir, cause }),
     })
 
-    // Phase 1 : scan → on obtient tous les objets à exporter
-    // scan() a besoin de DatabaseConnection → le requirement se propage ici
     const descriptors = yield* scan(options.schemas, options.scope, options.roles)
 
-    // Phase 2 : generate + write
-    // On garde une boucle impérative ici — c'est OK dans Effect.gen.
-    // La mutation est locale et contenue, comme dans une async function.
     const files: ExportResult["files"] = []
     let tableFiles = 0
     let functionFiles = 0
@@ -107,8 +102,6 @@ export const runExport = (
         counter++
       }
 
-      // writeSnapshots peut échouer avec WriteError
-      // → l'erreur se propage dans le type de runExport
       yield* writeSnapshots([{ filePath, content: sql }])
 
       files.push({

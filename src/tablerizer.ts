@@ -1,24 +1,27 @@
 /**
  * Tablerizer public API — Effect-TS version
  *
- * CONCEPT — La classe disparaît. Pourquoi ?
+ * CONCEPT — @effect/sql remplace notre couche custom
  *
- * L'ancien Tablerizer avait connect() / disconnect() / export().
- * La classe existait pour gérer le cycle de vie de la connexion.
+ * L'ancien code avait :
+ *   • DatabaseConnection (notre Context.Tag fait main)
+ *   • PostgresConnectionLive (notre Layer fait main)
  *
- * Avec Effect :
- *   • Le cycle de vie → géré par Layer + acquireRelease (database.ts)
- *   • La config → passée en paramètre (pas de state mutable)
- *   • Les méthodes → deviennent des fonctions qui retournent des Effects
+ * Maintenant :
+ *   • SqlClient.SqlClient (le Tag standard de @effect/sql)
+ *   • makeDbLayer (wrapper autour de PgClient.layer)
  *
- * Résultat : plus de classe, plus de this, plus de null checks.
- * Juste des fonctions composables.
+ * Le résultat est identique pour l'utilisateur :
+ *   exportAll(options) → Effect qui a besoin de SqlClient
+ *   runExportWithConnection(options) → Promise (frontière Effect → monde réel)
  */
 
 import { Effect, pipe } from "effect"
+import { SqlClient } from "@effect/sql"
+import type { SqlError } from "@effect/sql/SqlError"
 import type { TablerizerOptions } from "./config.js"
 import { validateConfig, normalizeScope, type ConfigValidationError } from "./config.js"
-import { type DatabaseConnection, type DatabaseError, BunSQLConnectionLive } from "./database.js"
+import { makeDbLayer } from "./database.js"
 import { generateTableSQL, generateFunctionSQL, applyRoleMappings } from "./generators/index.js"
 import { scanTable, scanFunction, type ScanError } from "./scanner.js"
 import { runExport, type ExportPipelineOptions } from "./orchestrator.js"
@@ -53,18 +56,12 @@ export type ProgressCallback = (progress: ExportProgress) => void
 // API FONCTIONNELLE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Chaque fonction retourne un Effect avec :
-//   A = le résultat
-//   E = les erreurs possibles (union de toutes les erreurs des couches)
-//   R = DatabaseConnection (fourni par un Layer)
+// Le requirement est maintenant SqlClient.SqlClient au lieu de
+// DatabaseConnection. C'est le Tag standard — fourni par
+// PgClient.layer() (PostgreSQL) ou tout autre driver @effect/sql.
 //
-// Remarque comment les erreurs s'ACCUMULENT :
-//   validateConfig    → ConfigValidationError
-//   scan/scanTable    → DatabaseError | ScanError
-//   writeSnapshots    → WriteError
-//
-// Le type final est l'UNION de toutes ces erreurs.
-// Le compilateur te force à toutes les gérer.
+// Les erreurs utilisent SqlError (de @effect/sql) au lieu de
+// notre ancien DatabaseError custom.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export const exportAll = (
@@ -72,8 +69,8 @@ export const exportAll = (
   progressCallback?: ProgressCallback,
 ): Effect.Effect<
   ExportResult,
-  ConfigValidationError | DatabaseError | ScanError | WriteError,
-  DatabaseConnection
+  ConfigValidationError | SqlError | ScanError | WriteError,
+  SqlClient.SqlClient
 > =>
   Effect.gen(function* () {
     yield* validateConfig(options)
@@ -94,7 +91,7 @@ export const exportTable = (
   schema: string,
   tableName: string,
   options: TablerizerOptions,
-): Effect.Effect<string, ConfigValidationError | DatabaseError | ScanError, DatabaseConnection> =>
+): Effect.Effect<string, ConfigValidationError | SqlError | ScanError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* validateConfig(options)
     const data = yield* scanTable(schema, tableName, options.roles)
@@ -109,7 +106,7 @@ export const exportFunction = (
   schema: string,
   functionName: string,
   options: TablerizerOptions,
-): Effect.Effect<string, ConfigValidationError | DatabaseError | ScanError, DatabaseConnection> =>
+): Effect.Effect<string, ConfigValidationError | SqlError | ScanError, SqlClient.SqlClient> =>
   Effect.gen(function* () {
     yield* validateConfig(options)
     const data = yield* scanFunction(schema, functionName, options.roles)
@@ -124,23 +121,11 @@ export const exportFunction = (
 // CONCEPT — Effect.provide + Effect.runPromise
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// Pour les utilisateurs qui veulent une API simple (Promise),
-// on fournit un helper qui :
-//   1. Crée le Layer avec la connection string
-//   2. Le fournit au programme (Effect.provide)
-//   3. Exécute le tout (Effect.runPromise)
+// makeDbLayer(url) crée un Layer qui fournit SqlClient.SqlClient.
+// Effect.provide(layer) élimine le R du type.
+// Effect.runPromise transforme le tout en Promise.
 //
 // C'est la FRONTIÈRE entre le monde Effect et le monde "normal".
-// À l'intérieur : tout est Effect, typé, composable.
-// À l'extérieur : juste une Promise, comme avant.
-//
-// Effect.provide élimine le R du type :
-//   Effect<A, E, DatabaseConnection>
-//     → Effect.provide(layer)
-//   Effect<A, E, never>  ← plus de requirement !
-//
-// Effect.runPromise transforme Effect en Promise :
-//   Effect<A, E, never> → Promise<A>
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export const runExportWithConnection = (
@@ -154,7 +139,7 @@ export const runExportWithConnection = (
   return Effect.runPromise(
     pipe(
       exportAll(options, progressCallback),
-      Effect.provide(BunSQLConnectionLive(dbUrl)),
+      Effect.provide(makeDbLayer(dbUrl)),
     ),
   )
 }

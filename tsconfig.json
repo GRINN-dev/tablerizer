@@ -17,7 +17,7 @@
     "removeComments": false,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
-    "types": ["bun-types"]
+    "types": []
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "lib", "**/*.test.ts", "**/*.spec.ts"]

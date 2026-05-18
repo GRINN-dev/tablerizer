@@ -1,36 +1,33 @@
 /**
- * Orchestrator tests — adaptés pour Effect-TS
+ * Orchestrator tests — adaptés pour @effect/sql
  *
  * Même pattern que scanner.test.ts :
- *   1. Créer un Layer mock (Layer.succeed)
+ *   1. Créer un Layer mock avec SqlClient.SqlClient
  *   2. Fournir le Layer (Effect.provide)
  *   3. Exécuter (Effect.runPromise)
- *
- * La grosse différence : runExport n'a plus de `connection`
- * dans ses options. La connexion vient du Layer.
  */
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { Effect, Layer, pipe } from "effect";
+import { SqlClient } from "@effect/sql";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { runExport } from "../../src/orchestrator.js";
-import { DatabaseConnection } from "../../src/database.js";
 import type { ExportProgress } from "../../src/tablerizer.js";
 
-function mockDatabaseLayer(queryFn: (text: string, params?: any[]) => any) {
-  return Layer.succeed(DatabaseConnection, {
-    query: <T = any>(text: string, params?: any[]) =>
+function mockSqlLayer(queryFn: (text: string, params?: any[]) => any) {
+  return Layer.succeed(SqlClient.SqlClient, {
+    unsafe: <T = any>(text: string, params?: any[]) =>
       Effect.succeed(queryFn(text, params)) as Effect.Effect<T[], any>,
-  });
+  } as any);
 }
 
 function defaultMockLayer(data: {
   tables?: { table_name: string }[];
 }) {
-  return mockDatabaseLayer((text) => {
+  return mockSqlLayer((text) => {
     if (text.includes("relname as table_name") && !text.includes("pg_index")) {
       return data.tables ?? [];
     }
@@ -64,7 +61,6 @@ describe("runExport", () => {
   it("exports a single table and returns correct ExportResult", async () => {
     const layer = defaultMockLayer({ tables: [{ table_name: "users" }] });
 
-    // Plus de `connection` dans les options — c'est le Layer qui fournit
     const result = await Effect.runPromise(
       pipe(
         runExport({
@@ -137,7 +133,7 @@ describe("runExport", () => {
       comment: null,
     };
 
-    const layer = mockDatabaseLayer((text) => {
+    const layer = mockSqlLayer((text) => {
       if (text.includes("pg_proc")) {
         return [
           { ...funcInfo, function_arguments: "email text" },
@@ -166,7 +162,7 @@ describe("runExport", () => {
   });
 
   it("applies role mappings to generated SQL", async () => {
-    const layer = mockDatabaseLayer((text) => {
+    const layer = mockSqlLayer((text) => {
       if (text.includes("relname as table_name") && !text.includes("pg_index")) {
         return [{ table_name: "users" }];
       }
