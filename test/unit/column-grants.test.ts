@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateColumnGrantsSQL } from "../../lib/generators.js";
+import { generateColumnGrantsSQL } from "../../src/generators/index.js";
 import { join } from "./fixtures.js";
 
 describe("generateColumnGrantsSQL", () => {
@@ -17,5 +17,15 @@ describe("generateColumnGrantsSQL", () => {
 
   it("should return empty array for no column grants", () => {
     assert.equal(generateColumnGrantsSQL("s", "t", []).length, 0);
+  });
+
+  it("should handle grantee names containing colons", () => {
+    const grants = [
+      { column_name: "a", grantor: "o", grantee: "role:special", privilege: "SELECT", is_grantable: false },
+      { column_name: "b", grantor: "o", grantee: "role:special", privilege: "SELECT", is_grantable: false },
+    ];
+    const result = join(generateColumnGrantsSQL("s", "t", grants));
+    assert.match(result, /GRANT SELECT \(a, b\) ON TABLE s\.t TO "role:special";/);
+    assert.equal(result.match(/GRANT SELECT/g)?.length, 1, "should produce exactly one GRANT SELECT");
   });
 });

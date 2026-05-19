@@ -49,6 +49,13 @@ export function generateGrantsSQL(
   return sqlStatements;
 }
 
+interface ColumnGrantGroup {
+  grantee: string;
+  privilege: string;
+  is_grantable: boolean;
+  columns: Set<string>;
+}
+
 /**
  * Generate column-level GRANT statements.
  * Grouped by grantee+privilege, columns sorted alphabetically.
@@ -68,40 +75,32 @@ export function generateColumnGrantsSQL(
 
   const sqlStatements: string[] = [];
 
-  // Group grants by grantee and privilege type
-  const grantsByGranteeAndPrivilege = new Map<string, Set<string>>();
+  const groups = new Map<string, ColumnGrantGroup>();
 
   for (const grant of columnGrants) {
-    const key = `${grant.grantee}:${grant.privilege}:${grant.is_grantable}`;
-    if (!grantsByGranteeAndPrivilege.has(key)) {
-      grantsByGranteeAndPrivilege.set(key, new Set());
+    const key = JSON.stringify([grant.grantee, grant.privilege, grant.is_grantable]);
+    let group = groups.get(key);
+    if (!group) {
+      group = { grantee: grant.grantee, privilege: grant.privilege, is_grantable: grant.is_grantable, columns: new Set() };
+      groups.set(key, group);
     }
-    grantsByGranteeAndPrivilege.get(key)!.add(grant.column_name);
+    group.columns.add(grant.column_name);
   }
 
-  // Sort entries by grantee, then privilege, then grantable for deterministic output
-  const sortedEntries = Array.from(grantsByGranteeAndPrivilege.entries()).sort(
-    (a, b) => {
-      const [granteeA, privilegeA, grantableA] = a[0].split(":");
-      const [granteeB, privilegeB, grantableB] = b[0].split(":");
-      const granteeCompare = granteeA.localeCompare(granteeB);
-      if (granteeCompare !== 0) return granteeCompare;
-      const privilegeCompare = privilegeA.localeCompare(privilegeB);
-      if (privilegeCompare !== 0) return privilegeCompare;
-      return grantableA.localeCompare(grantableB);
-    },
-  );
+  const sortedGroups = Array.from(groups.values()).sort((a, b) => {
+    const granteeCompare = a.grantee.localeCompare(b.grantee);
+    if (granteeCompare !== 0) return granteeCompare;
+    const privilegeCompare = a.privilege.localeCompare(b.privilege);
+    if (privilegeCompare !== 0) return privilegeCompare;
+    return String(a.is_grantable).localeCompare(String(b.is_grantable));
+  });
 
-  for (const [key, columns] of sortedEntries) {
-    const [grantee, privilege, isGrantableStr] = key.split(":");
-    const isGrantable = isGrantableStr === "true";
-
-    // Sort columns alphabetically for consistent output
-    const sortedColumns = Array.from(columns).sort();
+  for (const group of sortedGroups) {
+    const sortedColumns = Array.from(group.columns).sort();
     const escapedColumns = sortedColumns.map((col) => escapeIdent(col));
 
-    let sql = `GRANT ${privilege} (${escapedColumns.join(", ")}) ON TABLE ${schema}.${tableName} TO ${escapeIdent(grantee)}`;
-    if (isGrantable) {
+    let sql = `GRANT ${group.privilege} (${escapedColumns.join(", ")}) ON TABLE ${schema}.${tableName} TO ${escapeIdent(group.grantee)}`;
+    if (group.is_grantable) {
       sql += " WITH GRANT OPTION";
     }
     sql += ";";

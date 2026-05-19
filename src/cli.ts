@@ -1,15 +1,38 @@
 /**
- * Command-line interface for Tablerizer
+ * CLI for Tablerizer — Effect-TS version
+ *
+ * CONCEPTS EFFECT INTRODUITS :
+ *   1. Effect.provide   → fournir un Layer, éliminer le R du type
+ *   2. Effect.catchTag  → gérer une erreur spécifique par son _tag
+ *   3. Effect.catchAll  → attraper toutes les erreurs restantes
+ *   4. Effect.runPromise → la frontière Effect → monde réel
  */
 
-import type { CliArgs } from "./config.js";
+import { Effect, pipe } from "effect"
+import { readFileSync } from "fs"
+import {
+  parseCliArgs,
+  parseEnvVars,
+  parseConfigFile,
+  resolveConfig,
+  validateConfig,
+  findConfigFile,
+  ConfigParseError,
+  type TablerizerOptions,
+  type ConfigValidationError,
+  type ConfigFileNotFound,
+} from "./config.js"
+import { makeDbLayer } from "./database.js"
+import { exportAll, type ExportResult, type ProgressCallback } from "./tablerizer.js"
+import type { ScanError } from "./scanner.js"
+import type { WriteError } from "./writer.js"
+import { runInspectServer } from "./inspect/server.js"
 
-const TOOL_NAME = "tablerizer";
-const VERSION = "2.0.0";
+const TOOL_NAME = "tablerizer"
+const VERSION = "2.0.0"
 
-// ASCII Art for the tool
 const ASCII_ART = `
-████████╗ █████╗ ██████╗ ██╗     ███████╗██████╗ ██╗███████╗███████╗██████╗ 
+████████╗ █████╗ ██████╗ ██╗     ███████╗██████╗ ██╗███████╗███████╗██████╗
 ╚══██╔══╝██╔══██╗██╔══██╗██║     ██╔════╝██╔══██╗██║╚══███╔╝██╔════╝██╔══██╗
    ██║   ███████║██████╔╝██║     █████╗  ██████╔╝██║  ███╔╝ █████╗  ██████╔╝
    ██║   ██╔══██║██╔══██╗██║     ██╔══╝  ██╔══██╗██║ ███╔╝  ██╔══╝  ██╔══██╗
@@ -17,18 +40,12 @@ const ASCII_ART = `
    ╚═╝   ╚═╝  ╚═╝╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚═╝  ╚═╝
 
 🧙‍♂️ The PostgreSQL Table Export Wizard 🧙‍♂️
-`;
+`
 
-/**
- * Show ASCII art banner
- */
 export function showBanner(): void {
-  console.log(ASCII_ART);
+  console.log(ASCII_ART)
 }
 
-/**
- * Show help information
- */
 export function showHelp(): void {
   console.log(`
 🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!
@@ -41,6 +58,7 @@ USAGE:
   ${TOOL_NAME} --schemas "schema1,schema2" --out ./sql_output
   ${TOOL_NAME} --config ./config.json
   ${TOOL_NAME} (uses .tablerizerrc if present)
+  ${TOOL_NAME} inspect [--port 4280]
 
 SPELLBOOK (OPTIONS):
   --config <file>     📜 Path to configuration grimoire (JSON)
@@ -55,6 +73,10 @@ SPELLBOOK (OPTIONS):
   --silent           🤫 Silent mode - minimal output for automation
   --help, -h         ❓ Show this magical help
   --version, -v      ℹ️  Show version of the wizard
+
+COMMANDS:
+  inspect            🔍 Launch interactive schema inspector dashboard
+    --port <number>  🌐 Dashboard port (default: 4280)
 
 CONFIGURATION SCROLLS:
   Create .tablerizerrc (auto-detected) or custom JSON:
@@ -77,310 +99,202 @@ ENVIRONMENT ENCHANTMENTS:
   OUTPUT_DIR        📁 Output directory path
   ROLES             🔐 Comma-separated role names
 
-MAGIC FEATURES:
-  🎲 Role Mappings    - Replace roles with placeholders for Graphile Migrate
-  📋 Rich Documentation - Table schema, foreign keys, constraints, comments  
-  🧹 Idempotent Scripts - Safe cleanup and recreation sections
-  ⚡ Multi-Schema Export - Organized folder structure
-  🔮 Function Export - Export stored procedures and functions with GRANT EXECUTE
-  📊 Flexible Scope - Export tables, functions, views, materialized-views, or all
-
 For more wizardry: https://github.com/your-repo/tablerizer
-`);
+`)
 }
 
-/**
- * Show version information
- */
 export function showVersion(): void {
-  console.log(
-    `🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!`
-  );
+  console.log(`🎲 ${TOOL_NAME} v${VERSION} - The PostgreSQL Table Export Wizard!`)
 }
 
-/**
- * Parse command line arguments
- */
-export function parseCliArgs(): Partial<CliArgs> {
-  const args = process.argv.slice(2);
-  const result: Partial<CliArgs> = {
-    role_mappings: {},
-  };
-
-  // Check for help or version first
-  if (args.includes("--help") || args.includes("-h")) {
-    showHelp();
-    process.exit(0);
-  }
-
-  if (args.includes("--version") || args.includes("-v")) {
-    showVersion();
-    process.exit(0);
-  }
-
-  // Parse arguments
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    const next = args[i + 1];
-
-    switch (arg) {
-      case "--schema":
-        // Legacy support for single schema
-        result.schemas = [next];
-        i++;
-        break;
-      case "--schemas":
-        result.schemas = next.split(",").map((s) => s.trim());
-        i++;
-        break;
-      case "--out":
-        result.out = next;
-        i++;
-        break;
-      case "--role":
-      case "--roles":
-        result.roles = next.split(",").map((r) => r.trim());
-        i++;
-        break;
-      case "--database-url":
-        result.database_url = next;
-        i++;
-        break;
-      case "--scope":
-        if (
-          next === "tables" ||
-          next === "functions" ||
-          next === "views" ||
-          next === "materialized-views" ||
-          next === "all"
-        ) {
-          result.scope = next;
-        } else {
-          console.error(
-            "❌ Invalid scope. Must be: tables, functions, views, materialized-views, or all"
-          );
-          process.exit(1);
-        }
-        i++;
-        break;
-      case "--include-date":
-        result.include_date = true;
-        break;
-      case "--no-date":
-        result.include_date = false;
-        break;
-      case "--clean":
-        result.clean = true;
-        break;
-      case "--no-clean":
-        result.clean = false;
-        break;
-      case "--silent":
-        result.silent = true;
-        break;
-      case "--config":
-        // Config file path is handled separately
-        i++;
-        break;
-    }
-  }
-
-  return result;
+function getConfigPath(args: string[]): string | undefined {
+  const idx = args.indexOf("--config")
+  return idx !== -1 ? args[idx + 1] : undefined
 }
 
-/**
- * Get config file path from CLI args
- */
-export function getConfigPath(): string | undefined {
-  const args = process.argv.slice(2);
-  const configIndex = args.indexOf("--config");
-
-  if (configIndex !== -1 && args[configIndex + 1]) {
-    return args[configIndex + 1];
-  }
-
-  return undefined;
-}
-
-/**
- * Display configuration summary
- */
 export function displayConfigSummary(config: {
-  schemas: string[];
-  out?: string;
-  roles?: string[];
-  role_mappings?: Record<string, string>;
-  scope?: string | string[];
-  silent?: boolean;
+  schemas: string[]
+  out?: string
+  roles?: string[]
+  role_mappings?: Record<string, string>
+  scope?: string | string[]
+  silent?: boolean
 }): void {
   if (config.silent) {
-    // Minimal output in silent mode
-    console.log(
-      `Exporting ${config.schemas.join(",")} to ${config.out || "./tables"}`
-    );
-    return;
+    console.log(`Exporting ${config.schemas.join(",")} to ${config.out || "./tables"}`)
+    return
   }
-
-  console.log(`📂 Conjuring files in: ${config.out || "./tables"}`);
-  console.log(`🎯 Target schemas: ${config.schemas.join(", ")}`);
-  console.log(
-    `📊 Export scope: ${
-      Array.isArray(config.scope)
-        ? config.scope.join(", ")
-        : config.scope || "all"
-    }`
-  );
-
+  console.log(`📂 Conjuring files in: ${config.out || "./tables"}`)
+  console.log(`🎯 Target schemas: ${config.schemas.join(", ")}`)
+  console.log(`📊 Export scope: ${Array.isArray(config.scope) ? config.scope.join(", ") : config.scope || "all"}`)
   if (config.roles && config.roles.length > 0) {
-    console.log(`🔐 Filtering for roles: ${config.roles.join(", ")}`);
+    console.log(`🔐 Filtering for roles: ${config.roles.join(", ")}`)
   } else {
-    console.log(`🔐 Including all roles (full power!)`);
+    console.log(`🔐 Including all roles (full power!)`)
   }
-
   if (config.role_mappings && Object.keys(config.role_mappings).length > 0) {
-    console.log(`🎭 Role transformation spells:`);
+    console.log(`🎭 Role transformation spells:`)
     for (const [from, to] of Object.entries(config.role_mappings)) {
-      console.log(`   ✨ ${from} → ${to}`);
+      console.log(`   ✨ ${from} → ${to}`)
     }
   }
 }
 
-/**
- * Display completion summary
- */
 export function displayCompletionSummary(summary: {
-  schemas: string[];
-  totalFiles: number;
-  tableFiles?: number;
-  functionFiles?: number;
-  outputPath: string;
-  roleMappings?: Record<string, string>;
-  silent?: boolean;
+  schemas: string[]
+  totalFiles: number
+  tableFiles?: number
+  functionFiles?: number
+  outputPath: string
+  roleMappings?: Record<string, string>
+  silent?: boolean
 }): void {
   if (summary.silent) {
-    // Minimal output in silent mode
-    console.log(
-      `Complete: ${summary.totalFiles} files exported to ${summary.outputPath}`
-    );
-    return;
+    console.log(`Complete: ${summary.totalFiles} files exported to ${summary.outputPath}`)
+    return
   }
-
-  console.log(`🏆 Export wizard complete!`);
-  console.log(`📊 Summary:`);
-  console.log(`   • Schemas processed: ${summary.schemas.length}`);
-  console.log(`   • Total files created: ${summary.totalFiles}`);
-
-  if (summary.tableFiles !== undefined) {
-    console.log(`   • Table files: ${summary.tableFiles}`);
-  }
-  if (summary.functionFiles !== undefined) {
-    console.log(`   • Function files: ${summary.functionFiles}`);
-  }
-
-  console.log(`   • Output location: ${summary.outputPath}`);
-
+  console.log(`🏆 Export wizard complete!`)
+  console.log(`📊 Summary:`)
+  console.log(`   • Schemas processed: ${summary.schemas.length}`)
+  console.log(`   • Total files created: ${summary.totalFiles}`)
+  if (summary.tableFiles !== undefined) console.log(`   • Table files: ${summary.tableFiles}`)
+  if (summary.functionFiles !== undefined) console.log(`   • Function files: ${summary.functionFiles}`)
+  console.log(`   • Output location: ${summary.outputPath}`)
   if (summary.roleMappings && Object.keys(summary.roleMappings).length > 0) {
-    console.log(
-      `   • Role transformation spells: ${
-        Object.keys(summary.roleMappings).length
-      } applied`
-    );
+    console.log(`   • Role transformation spells: ${Object.keys(summary.roleMappings).length} applied`)
   }
-
-  console.log(`\\n✨ Your database spells are ready! ✨\\n`);
+  console.log(`\n✨ Your database spells are ready! ✨\n`)
 }
 
-/**
- * Display error message with wizard theme
- */
 export function displayError(message: string): void {
-  console.error(`💥 Spell failed: ${message}`);
+  console.error(`💥 Spell failed: ${message}`)
 }
 
-/**
- * Display connection status
- */
-export function displayConnectionStatus(
-  connecting: boolean,
-  silent?: boolean
-): void {
+export function displayConnectionStatus(connecting: boolean, silent?: boolean): void {
   if (silent) {
-    // Minimal output in silent mode
-    if (connecting) {
-      console.log(`Connecting...`);
-    } else {
-      console.log(`Connected.`);
-    }
-    return;
+    console.log(connecting ? `Connecting...` : `Connected.`)
+    return
   }
-
   if (connecting) {
-    console.log(`🔮 Connecting to database...`);
+    console.log(`🔮 Connecting to database...`)
   } else {
-    console.log(`✨ Connected successfully! The magic begins...\n`);
+    console.log(`✨ Connected successfully! The magic begins...\n`)
   }
 }
 
-/**
- * Display processing status
- */
 export function displayProcessingStatus(silent?: boolean): void {
   if (silent) {
-    // Minimal output in silent mode
-    console.log(`Processing...`);
-    return;
+    console.log(`Processing...`)
+    return
   }
-
-  console.log(`\n🚀 The table export wizard is working...\n`);
+  console.log(`\n🚀 The table export wizard is working...\n`)
 }
 
-/**
- * Main CLI runner function
- */
-export async function runCLI(): Promise<void> {
-  // Import here to avoid circular dependencies
-  const { Tablerizer } = await import("./index.js");
-  const { resolveConfig } = await import("./config.js");
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CHARGEMENT DE LA CONFIG
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  try {
-    // Parse CLI args
-    const cliArgs = parseCliArgs();
-    const configPath = getConfigPath();
+const loadConfig = (
+  args: string[],
+): Effect.Effect<TablerizerOptions, ConfigParseError | ConfigValidationError> =>
+  Effect.gen(function* () {
+    const configPath = getConfigPath(args)
 
-    // Resolve configuration
-    const config = await resolveConfig(cliArgs, configPath);
+    const fileConfig = yield* pipe(
+      configPath
+        ? Effect.succeed(configPath)
+        : findConfigFile,
+      Effect.flatMap((filePath) =>
+        pipe(
+          Effect.try({
+            try: () => readFileSync(filePath, "utf8"),
+            catch: (cause) =>
+              new ConfigParseError({
+                message: `Cannot read ${filePath}: ${cause}`,
+                cause,
+              }),
+          }),
+          Effect.flatMap((content) => parseConfigFile(content)),
+        ),
+      ),
+      Effect.catchTag("ConfigFileNotFound", () =>
+        Effect.succeed({} as Partial<TablerizerOptions>),
+      ),
+    )
 
-    // Show banner only if not in silent mode
-    if (!config.silent) {
-      showBanner();
+    const config = resolveConfig({
+      file: fileConfig,
+      env: parseEnvVars(process.env),
+      cli: parseCliArgs(args),
+    })
+
+    return yield* validateConfig(config)
+  })
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PROGRAMME PRINCIPAL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// CHANGEMENT : on utilise makeDbLayer() au lieu de
+// PostgresConnectionLive(). Le Layer fournit SqlClient.SqlClient
+// (le Tag standard) au lieu de notre ancien DatabaseConnection.
+//
+// Dans catchTags, "DatabaseError" devient "SqlError" — c'est
+// l'erreur standard de @effect/sql.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const cliProgram: Effect.Effect<void, never> = pipe(
+  Effect.gen(function* () {
+    const args = process.argv.slice(2)
+
+    if (args.includes("--help") || args.includes("-h")) {
+      showHelp()
+      return
+    }
+    if (args.includes("--version") || args.includes("-v")) {
+      showVersion()
+      return
     }
 
-    // Display configuration summary
-    displayConfigSummary(config);
-    displayConnectionStatus(true, config.silent);
+    if (args[0] === "inspect") {
+      const inspectArgs = args.slice(1)
+      const portIdx = inspectArgs.indexOf("--port")
+      const port = portIdx !== -1 ? parseInt(inspectArgs[portIdx + 1], 10) || 4280 : 4280
 
-    // Create and run tablerizer
-    const tablerizer = new Tablerizer(config);
-    await tablerizer.connect();
+      const config = yield* loadConfig(inspectArgs)
+      yield* pipe(
+        runInspectServer({
+          database_url: config.database_url!,
+          schemas: config.schemas,
+          port,
+        }),
+        Effect.catchAll((e) =>
+          Effect.sync(() => {
+            displayError(`Inspect server error: ${e.message}`)
+            process.exit(1)
+          }),
+        ),
+      )
+      return
+    }
 
-    displayConnectionStatus(false, config.silent);
-    displayProcessingStatus(config.silent);
+    const config = yield* loadConfig(args)
 
-    let progressCounter = 0;
+    if (!config.silent) showBanner()
+    displayConfigSummary(config)
+    displayConnectionStatus(true, config.silent)
 
-    const result = await tablerizer.export((progress) => {
-      progressCounter++;
-      const percentage = Math.round((progress.progress / progress.total) * 100);
-      if (!config.silent) {
-        console.log(
-          `    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${percentage}%)`
-        );
-      }
-    });
+    const result = yield* pipe(
+      exportAll(config, (progress) => {
+        if (!config.silent) {
+          const pct = Math.round((progress.progress / progress.total) * 100)
+          console.log(`    ✨ ${progress.schema}.${progress.table} (${progress.progress}/${progress.total} - ${pct}%)`)
+        }
+      }),
+      Effect.provide(makeDbLayer(config.database_url!)),
+    )
 
-    await tablerizer.disconnect();
-
-    // Display completion summary
+    displayConnectionStatus(false, config.silent)
     displayCompletionSummary({
       schemas: result.schemas,
       totalFiles: result.totalFiles,
@@ -389,13 +303,42 @@ export async function runCLI(): Promise<void> {
       outputPath: result.outputPath,
       roleMappings: config.role_mappings,
       silent: config.silent,
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      displayError(error.message);
-    } else {
-      displayError("Unknown error occurred");
-    }
-    throw error;
-  }
+    })
+  }),
+  Effect.catchTags({
+    ConfigValidationError: (e) =>
+      Effect.sync(() => {
+        displayError(e.issues.join("; "))
+        process.exit(1)
+      }),
+    ConfigParseError: (e) =>
+      Effect.sync(() => {
+        displayError(`Configuration error: ${e.message}`)
+        process.exit(1)
+      }),
+    SqlError: (e) =>
+      Effect.sync(() => {
+        displayError(`Database error: ${e.message}`)
+        if (e.cause) console.error("  Cause:", e.cause)
+        process.exit(1)
+      }),
+    ScanError: (e) =>
+      Effect.sync(() => {
+        displayError(e.message)
+        process.exit(1)
+      }),
+    WriteError: (e) =>
+      Effect.sync(() => {
+        displayError(`Failed to write ${e.filePath}`)
+        process.exit(1)
+      }),
+  }),
+)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// POINT D'ENTRÉE — la frontière Effect → monde réel
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export async function runCLI(): Promise<void> {
+  return Effect.runPromise(cliProgram)
 }

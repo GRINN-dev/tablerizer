@@ -1,8 +1,6 @@
 export function escapeIdent(name: string): string {
-  if (name.includes(" ") || name.includes("-") || name.includes(".")) {
-    return `"${name}"`;
-  }
-  return name;
+  if (/^[a-z_][a-z0-9_]*$/.test(name)) return name;
+  return `"${name}"`;
 }
 
 export function sectionHeader(title: string): string[] {
@@ -28,8 +26,8 @@ export function applyRoleMappings(
     const patterns = [
       // GRANT/REVOKE TO/FROM role
       new RegExp(`\\b(TO|FROM)\\s+"?${actualRole}"?\\b`, "gi"),
-      // Role in policy definitions
-      new RegExp(`\\b"?${actualRole}"?\\b(?=\\s*[,;)])`, "gi"),
+      // Role in policy definitions, comments, and end-of-line contexts
+      new RegExp(`\\b"?${actualRole}"?\\b(?=\\s*[,;)]|$)`, "gim"),
     ];
 
     for (const pattern of patterns) {

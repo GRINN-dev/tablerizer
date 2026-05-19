@@ -1,6 +1,6 @@
 {
   "name": "tablerizer",
-  "version": "2.0.0",
+  "version": "3.0.0-beta.4",
   "description": "🎲 Tablerizer - The PostgreSQL table export wizard! Generate SQL files for RBAC, RLS, triggers, and schema documentation",
   "main": "./lib/index.js",
   "module": "./lib/index.js",
@@ -24,8 +24,8 @@
       "types": "./lib/database.d.ts"
     },
     "./generators": {
-      "import": "./lib/generators.js",
-      "types": "./lib/generators.d.ts"
+      "import": "./lib/generators/index.js",
+      "types": "./lib/generators/index.d.ts"
     }
   },
   "bin": {
@@ -34,24 +34,28 @@
   "files": [
     "lib/**/*",
     "bin/**/*",
+    "dashboard/dist/**/*",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node bin/tablerizer.js",
-    "help": "node bin/tablerizer.js --help",
-    "version": "node bin/tablerizer.js --version",
+    "start": "bun bin/tablerizer.js",
+    "help": "bun bin/tablerizer.js --help",
+    "version": "bun bin/tablerizer.js --version",
+    "inspect": "bun bin/tablerizer.js inspect",
+    "dashboard:dev": "cd dashboard && npm run dev",
+    "dashboard:build": "cd dashboard && npm run build",
     "clean": "rm -rf lib",
-    "prepublishOnly": "npm run clean && npm run build",
-    "release:patch": "npm version patch && git push origin main && git push origin --tags",
-    "release:minor": "npm version minor && git push origin main && git push origin --tags",
-    "release:major": "npm version major && git push origin main && git push origin --tags",
-    "check": "npm run build && npm pack --dry-run",
-    "test": "npm run build && node --import tsx --test --test-timeout=30000 test/generators.test.ts test/integration.test.ts",
-    "test:unit": "npm run build && node --import tsx --test --test-timeout=10000 test/generators.test.ts",
-    "test:integration": "npm run build && node --import tsx --test --test-timeout=30000 test/integration.test.ts",
+    "prepublishOnly": "bun run clean && bun run dashboard:build && bun run build",
+    "release:patch": "bun version patch && git push origin main && git push origin --tags",
+    "release:minor": "bun version minor && git push origin main && git push origin --tags",
+    "release:major": "bun version major && git push origin main && git push origin --tags",
+    "check": "bun run build && bun pm pack --dry-run",
+    "test": "bun test test/unit/",
+    "test:unit": "bun test test/unit/",
+    "test:integration": "bun test test/integration/",
     "test:docker": "bash run-tests.sh"
   },
   "keywords": [
@@ -86,15 +90,17 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.22",
-    "@types/pg": "^8.15.5",
-    "tsx": "^4.21.0",
-    "typescript": "^5.0.0"
+    "@types/bun": "latest",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
-    "pg": "^8.16.3"
+    "@effect/platform": "^0.96.1",
+    "@effect/platform-node": "^0.106.0",
+    "@effect/sql": "^0.51.1",
+    "@effect/sql-pg": "^0.52.1",
+    "effect": "^3.21.2"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^6.0.3"
   }
 }

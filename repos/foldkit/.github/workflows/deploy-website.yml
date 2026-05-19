@@ -1,0 +1,91 @@
+name: Deploy Website to Vercel
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/website/**'
+      - 'packages/foldkit/**'
+      - 'packages/vite-plugin-foldkit/**'
+      - 'examples/**'
+      - 'scripts/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-website.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core packages
+        run: pnpm --filter foldkit --filter @foldkit/vite-plugin... build
+
+      - name: Build examples
+        run: pnpm build:examples
+
+      - name: Build website
+        run: pnpm build:website
+
+      - name: Install Playwright chromium
+        run: pnpm --filter website exec playwright install --with-deps chromium
+
+      - name: Prerender
+        run: pnpm --filter website prerender
+
+      - name: Prepare Vercel output
+        run: |
+          mkdir -p .vercel/output/static
+          cp -r packages/website/dist/* .vercel/output/static/
+          cat > .vercel/output/config.json << 'EOF'
+          {
+            "version": 3,
+            "routes": [
+              {
+                "src": "^/og/(.*)\\.png$",
+                "headers": {
+                  "Content-Type": "image/png",
+                  "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400"
+                },
+                "continue": true
+              },
+              {
+                "src": "^/$",
+                "headers": {
+                  "Link": "</sitemap.xml>; rel=\"sitemap\", </manifesto>; rel=\"about\", </getting-started>; rel=\"help\", </example-apps>; rel=\"related\", </ai/overview>; rel=\"describedby\""
+                },
+                "continue": true
+              },
+              { "handle": "filesystem" },
+              {
+                "src": "/",
+                "has": [{ "type": "query", "key": "embedded", "value": "(?<slug>[^&]+)" }],
+                "dest": "/example-apps-embed/$slug/index.html"
+              },
+              { "src": "/(.*)", "dest": "/index.html" }
+            ]
+          }
+          EOF
+
+      - name: Deploy to Vercel
+        run: npx vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_WEBSITE_PROJECT_ID }}

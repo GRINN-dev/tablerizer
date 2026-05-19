@@ -10,9 +10,7 @@
  *   - Local PostgreSQL (if ROOT_DATABASE_URL is set)
  */
 
-import pg from "pg";
-
-const { Pool } = pg;
+import { SQL } from "bun";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -45,13 +43,12 @@ function getConfig(): TestDatabaseConfig {
 
 export class TestDatabase {
   private config: TestDatabaseConfig;
-  private pool?: InstanceType<typeof Pool>;
+  private sql?: InstanceType<typeof SQL>;
 
   constructor(config?: TestDatabaseConfig) {
     this.config = config || getConfig();
   }
 
-  /** Database URL pointing to the test database, connected as DATABASE_OWNER */
   get databaseUrl(): string {
     const url = new URL(this.config.ROOT_DATABASE_URL);
     url.pathname = `/${this.config.DATABASE_NAME}`;
@@ -72,102 +69,88 @@ export class TestDatabase {
     return this.config.DATABASE_AUTHENTICATOR;
   }
 
-  /**
-   * Wait for PostgreSQL, then create roles + test database.
-   */
   async setup(): Promise<void> {
-    const rootPool = new Pool({
-      connectionString: this.config.ROOT_DATABASE_URL,
-    });
+    const rootSql = new SQL(this.config.ROOT_DATABASE_URL);
 
     // Wait for PG to be ready (up to 30 s)
     let ready = false;
     for (let i = 0; i < 30 && !ready; i++) {
       try {
-        await rootPool.query("SELECT 1");
+        await rootSql.unsafe("SELECT 1");
         ready = true;
       } catch {
         await sleep(1000);
       }
     }
-    if (!ready) throw new Error("PostgreSQL not reachable after 30 s");
+    if (!ready) {
+      await rootSql.close();
+      throw new Error("PostgreSQL not reachable after 30 s");
+    }
 
-    const client = await rootPool.connect();
     try {
       // Terminate existing connections
-      await client
-        .query(
-          `SELECT pg_terminate_backend(pid)
-           FROM pg_stat_activity
-           WHERE datname = $1 AND pid <> pg_backend_pid()`,
-          [this.config.DATABASE_NAME],
-        )
-        .catch(() => {});
+      await rootSql.unsafe(
+        `SELECT pg_terminate_backend(pid)
+         FROM pg_stat_activity
+         WHERE datname = $1 AND pid <> pg_backend_pid()`,
+        [this.config.DATABASE_NAME],
+      ).catch(() => {});
 
       // Idempotent cleanup
-      await client.query(`DROP DATABASE IF EXISTS ${this.config.DATABASE_NAME}`).catch(() => {});
-      await client.query(`DROP ROLE IF EXISTS ${this.config.DATABASE_VISITOR}`).catch(() => {});
-      await client.query(`DROP ROLE IF EXISTS ${this.config.DATABASE_AUTHENTICATOR}`).catch(() => {});
-      await client.query(`DROP ROLE IF EXISTS ${this.config.DATABASE_OWNER}`).catch(() => {});
+      await rootSql.unsafe(`DROP DATABASE IF EXISTS ${this.config.DATABASE_NAME}`).catch(() => {});
+      await rootSql.unsafe(`DROP ROLE IF EXISTS ${this.config.DATABASE_VISITOR}`).catch(() => {});
+      await rootSql.unsafe(`DROP ROLE IF EXISTS ${this.config.DATABASE_AUTHENTICATOR}`).catch(() => {});
+      await rootSql.unsafe(`DROP ROLE IF EXISTS ${this.config.DATABASE_OWNER}`).catch(() => {});
 
       // Create roles
-      await client.query(
+      await rootSql.unsafe(
         `CREATE ROLE ${this.config.DATABASE_OWNER} WITH LOGIN PASSWORD '${this.config.DATABASE_OWNER_PASSWORD}' SUPERUSER`,
       );
-      await client.query(
+      await rootSql.unsafe(
         `CREATE ROLE ${this.config.DATABASE_AUTHENTICATOR} WITH LOGIN PASSWORD '${this.config.DATABASE_AUTHENTICATOR_PASSWORD}' NOINHERIT`,
       );
-      await client.query(`CREATE ROLE ${this.config.DATABASE_VISITOR}`);
-      await client.query(
+      await rootSql.unsafe(`CREATE ROLE ${this.config.DATABASE_VISITOR}`);
+      await rootSql.unsafe(
         `GRANT ${this.config.DATABASE_VISITOR} TO ${this.config.DATABASE_AUTHENTICATOR}`,
       );
 
       // Create database
-      await client.query(
+      await rootSql.unsafe(
         `CREATE DATABASE ${this.config.DATABASE_NAME} OWNER ${this.config.DATABASE_OWNER}`,
       );
     } finally {
-      client.release();
-      await rootPool.end();
+      await rootSql.close();
     }
   }
 
-  /** Execute arbitrary SQL on the test database */
-  async executeSQL(sql: string): Promise<void> {
-    if (!this.pool) {
-      this.pool = new Pool({ connectionString: this.databaseUrl });
+  async executeSQL(sqlText: string): Promise<void> {
+    if (!this.sql) {
+      this.sql = new SQL(this.databaseUrl);
     }
-    await this.pool.query(sql);
+    await this.sql.unsafe(sqlText);
   }
 
-  /** Tear down everything */
   async teardown(): Promise<void> {
-    if (this.pool) {
-      await this.pool.end();
-      this.pool = undefined;
+    if (this.sql) {
+      await this.sql.close();
+      this.sql = undefined;
     }
 
-    const rootPool = new Pool({
-      connectionString: this.config.ROOT_DATABASE_URL,
-    });
-    const client = await rootPool.connect();
+    const rootSql = new SQL(this.config.ROOT_DATABASE_URL);
     try {
-      await client
-        .query(
-          `SELECT pg_terminate_backend(pid)
-           FROM pg_stat_activity
-           WHERE datname = $1 AND pid <> pg_backend_pid()`,
-          [this.config.DATABASE_NAME],
-        )
-        .catch(() => {});
+      await rootSql.unsafe(
+        `SELECT pg_terminate_backend(pid)
+         FROM pg_stat_activity
+         WHERE datname = $1 AND pid <> pg_backend_pid()`,
+        [this.config.DATABASE_NAME],
+      ).catch(() => {});
 
-      await client.query(`DROP DATABASE IF EXISTS ${this.config.DATABASE_NAME}`).catch(() => {});
-      await client.query(`DROP ROLE IF EXISTS ${this.config.DATABASE_VISITOR}`).catch(() => {});
-      await client.query(`DROP ROLE IF EXISTS ${this.config.DATABASE_AUTHENTICATOR}`).catch(() => {});
-      await client.query(`DROP ROLE IF EXISTS ${this.config.DATABASE_OWNER}`).catch(() => {});
+      await rootSql.unsafe(`DROP DATABASE IF EXISTS ${this.config.DATABASE_NAME}`).catch(() => {});
+      await rootSql.unsafe(`DROP ROLE IF EXISTS ${this.config.DATABASE_VISITOR}`).catch(() => {});
+      await rootSql.unsafe(`DROP ROLE IF EXISTS ${this.config.DATABASE_AUTHENTICATOR}`).catch(() => {});
+      await rootSql.unsafe(`DROP ROLE IF EXISTS ${this.config.DATABASE_OWNER}`).catch(() => {});
     } finally {
-      client.release();
-      await rootPool.end();
+      await rootSql.close();
     }
   }
 }

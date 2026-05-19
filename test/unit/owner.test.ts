@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateOwnerSQL } from "../../lib/generators.js";
+import { generateOwnerSQL } from "../../src/generators/index.js";
 import { join } from "./fixtures.js";
 
 describe("generateOwnerSQL", () => {

@@ -1,0 +1,103 @@
+{
+  "name": "foldkit-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "foldkit: Elm-inspired UI framework powered by Effect-TS",
+  "scripts": {
+    "prepare": "test -z \"$CI\" && simple-git-hooks || true",
+    "build": "pnpm -r --if-present build",
+    "check": "pnpm -F foldkit -F @foldkit/vite-plugin -F @typing-game/shared build && pnpm -r typecheck && pnpm lint && pnpm check:effect-prebundle",
+    "lint": "pnpm -r --if-present lint",
+    "check:effect-prebundle": "tsx scripts/check-effect-prebundle.ts",
+    "check:changeset-ignore": "tsx scripts/check-changeset-ignore.ts",
+    "check:skill-version": "bash scripts/check-skill-version.sh",
+    "check:no-major-changesets": "bash scripts/check-no-major-changesets.sh",
+    "check:no-claude-comments": "bash scripts/check-no-claude-comments.sh",
+    "check:circular-deps": "bash scripts/check-circular-deps.sh",
+    "check:create-foldkit-app-smoke": "tsx scripts/check-create-foldkit-app-smoke.ts",
+    "pre-push": "pnpm check:no-claude-comments && pnpm format:check && pnpm check:skill-version && pnpm check:no-major-changesets && pnpm check:changeset-ignore && pnpm changeset status --since=origin/main && pnpm lint && pnpm check:effect-prebundle && pnpm check:circular-deps && pnpm build && pnpm -r typecheck && pnpm test && bash scripts/run-website-e2e.sh",
+    "test": "pnpm -r --filter './examples/*' --filter './packages/*' run --if-present test",
+    "test:e2e": "pnpm --filter website test:e2e",
+    "format": "prettier -w .",
+    "format:check": "prettier --check .",
+    "dev:core": "pnpm --filter foldkit watch",
+    "dev:website": "pnpm --filter website dev",
+    "build:examples": "tsx scripts/build-examples.ts",
+    "build:website": "pnpm --filter website... build",
+    "preview:website": "pnpm build:website && pnpm --filter website prerender && pnpm --filter website preview",
+    "dev:typing-game:client": "pnpm --filter @typing-game/client dev",
+    "build:typing-game:client": "pnpm --filter @typing-game/client... build",
+    "dev:typing-game:server": "pnpm --filter @typing-game/server dev",
+    "build:typing-game": "pnpm --filter '@typing-game/*' build",
+    "dev:example:counter": "pnpm --filter counter-example dev",
+    "dev:example:stopwatch": "pnpm --filter stopwatch-example dev",
+    "dev:example:weather": "pnpm --filter weather-example dev",
+    "dev:example:todo": "pnpm --filter todo-example dev",
+    "dev:example:form": "pnpm --filter form-example dev",
+    "dev:example:routing": "pnpm --filter routing-example dev",
+    "dev:example:query-sync": "pnpm --filter query-sync-example dev",
+    "dev:example:shopping-cart": "pnpm --filter shopping-cart-example dev",
+    "dev:example:snake": "pnpm --filter snake-example dev",
+    "dev:example:websocket-chat": "pnpm --filter websocket-chat-example dev",
+    "dev:example:auth": "pnpm --filter auth-example dev",
+    "dev:example:crash-view": "pnpm --filter crash-view-example dev",
+    "dev:example:pixel-art": "pnpm --filter pixel-art-example dev",
+    "dev:example:job-application": "pnpm --filter job-application-example dev",
+    "dev:example:kanban": "pnpm --filter kanban-example dev",
+    "dev:example:map": "pnpm --filter map-example dev",
+    "dev:example:canvas-art": "pnpm --filter canvas-art-example dev",
+    "dev:example:generative-art": "pnpm --filter generative-art-example dev",
+    "dev:example:web-components": "pnpm --filter web-components-example dev",
+    "dev:example:ui-showcase": "pnpm --filter ui-showcase dev",
+    "changeset": "changeset",
+    "version-packages": "changeset version && tsx scripts/reset-peer-deps.ts && pnpm install --no-frozen-lockfile",
+    "release": "pnpm -r build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "@eslint/js": "^10.0.1",
+    "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.2",
+    "@typescript-eslint/parser": "^8.59.2",
+    "eslint": "^10.3.0",
+    "madge": "^8.0.0",
+    "prettier": "^3.8.3",
+    "simple-git-hooks": "^2.13.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
+  },
+  "simple-git-hooks": {
+    "commit-msg": "if grep -q 'Co-Authored-By.*[Cc]laude' \"$1\"; then echo '\\n❌ Commit message contains a Claude Co-Authored-By line. Remove it and try again.' && exit 1; fi",
+    "pre-push": "exec pnpm pre-push"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "esbuild",
+      "msgpackr-extract",
+      "simple-git-hooks"
+    ],
+    "overrides": {
+      "effect": "4.0.0-beta.66",
+      "@effect/platform-browser": "4.0.0-beta.66",
+      "@effect/platform-node": "4.0.0-beta.66",
+      "@effect/vitest": "4.0.0-beta.66"
+    }
+  },
+  "engines": {
+    "node": ">=20.19.0 || >=22.12.0",
+    "pnpm": ">=8"
+  },
+  "keywords": [
+    "effect",
+    "ui",
+    "elm",
+    "functional",
+    "typescript",
+    "framework"
+  ],
+  "author": "Devin Jameson",
+  "license": "MIT"
+}

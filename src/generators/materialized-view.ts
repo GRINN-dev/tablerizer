@@ -1,24 +1,13 @@
-import type { MaterializedViewInfo } from "../database.js";
-import { escapeIdent, sectionHeader, applyRoleMappings } from "./utils.js";
+import type { MaterializedViewData } from "../scanner.js";
+import { escapeIdent, sectionHeader } from "./utils.js";
 
-/**
- * Generate documentation and grants for a materialized view
- */
 export function generateMaterializedViewSQL(
-  matview: MaterializedViewInfo,
-  grants: Array<{
-    grantor: string;
-    grantee: string;
-    privilege: string;
-    is_grantable: boolean;
-  }>,
-  indexes: Array<{
-    index_name: string;
-    index_definition: string;
-  }>,
-  roleMappings?: Record<string, string>,
+  data: MaterializedViewData,
   includeDate: boolean = false,
 ): string {
+  const matview = data.info;
+  const grants = data.grants;
+  const indexes = data.indexes;
   const lines: string[] = [];
 
   lines.push(`-- ========================================`);
@@ -126,11 +115,5 @@ export function generateMaterializedViewSQL(
     lines.push("");
   }
 
-  let content = lines.join("\n");
-
-  if (roleMappings && Object.keys(roleMappings).length > 0) {
-    content = applyRoleMappings(content, roleMappings);
-  }
-
-  return content;
+  return lines.join("\n");
 }

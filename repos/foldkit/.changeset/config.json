@@ -1,0 +1,42 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.2/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
+    "onlyUpdatePeerDependentsWhenOutOfRange": true
+  },
+  "ignore": [
+    "website",
+    "@typing-game/client",
+    "@typing-game/server",
+    "@typing-game/shared",
+    "form-example",
+    "auth-example",
+    "todo-example",
+    "shopping-cart-example",
+    "stopwatch-example",
+    "weather-example",
+    "routing-example",
+    "counter-example",
+    "websocket-chat-example",
+    "snake-example",
+    "crash-view-example",
+    "query-sync-example",
+    "ui-showcase",
+    "pixel-art-example",
+    "kanban-example",
+    "job-application-example",
+    "map-example",
+    "canvas-art-example",
+    "generative-art-example",
+    "web-components-example",
+    "pixel-art-react-comparison",
+    "@foldkit/performance-harness",
+    "@foldkit/examples-e2e"
+  ]
+}

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateCommentsSQL } from "../../lib/generators.js";
-import type { ColumnDefinition } from "../../lib/database.js";
+import { generateCommentsSQL } from "../../src/generators/index.js";
+import type { ColumnDefinition } from "../../src/database.js";
 import { join, cols } from "./fixtures.js";
 
 describe("generateCommentsSQL", () => {

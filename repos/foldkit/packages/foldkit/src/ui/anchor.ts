@@ -1,0 +1,179 @@
+import {
+  autoUpdate,
+  computePosition,
+  flip,
+  offset as floatingOffset,
+  shift,
+  size,
+} from '@floating-ui/dom'
+import { Function, Schema as S } from 'effect'
+
+/** Schema mirroring `@floating-ui/dom`'s `Placement` literal union: a side
+ *  (`top`/`right`/`bottom`/`left`) optionally suffixed with `-start` or `-end`. */
+export const Placement = S.Literals([
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'top-start',
+  'top-end',
+  'right-start',
+  'right-end',
+  'bottom-start',
+  'bottom-end',
+  'left-start',
+  'left-end',
+])
+
+/** Static configuration for anchor-based positioning of a floating element relative to a button. */
+export const AnchorConfig = S.Struct({
+  placement: S.optional(Placement),
+  gap: S.optional(S.Number),
+  offset: S.optional(S.Number),
+  padding: S.optional(S.Number),
+  portal: S.optional(S.Boolean),
+})
+
+export type AnchorConfig = typeof AnchorConfig.Type
+
+const PORTAL_ROOT_ID = 'foldkit-portal-root'
+
+const getOrCreatePortalRoot = (): HTMLElement => {
+  const existing = document.getElementById(PORTAL_ROOT_ID)
+
+  if (existing) {
+    return existing
+  }
+
+  const root = document.createElement('div')
+  root.id = PORTAL_ROOT_ID
+
+  // NOTE: prepended (not appended) so portaled overlays sit BEFORE the page's
+  // listbox/popover/menu wrappers in tree order. Those wrappers are
+  // `position: relative; z-index: auto` and paint at CSS step 8 in tree order;
+  // a backdrop appended after them would paint on top of every button on the
+  // page, breaking click-outside detection. Prepending makes wrappers paint
+  // above the backdrop, while panels (z-10) still win via step 9.
+  document.body.insertBefore(root, document.body.firstChild)
+  return root
+}
+
+/** Relocates an element into the shared `foldkit-portal-root` div appended to
+ *  `document.body`, escaping any ancestor stacking context. Returns a cleanup
+ *  function that removes the element from the portal root. Designed to be
+ *  called from inside an `OnMount` action: the consumer wraps the call in
+ *  `Effect.sync` and stashes the returned cleanup in the `Mount` result. */
+export const portalToBody = (element: Element): (() => void) => {
+  getOrCreatePortalRoot().appendChild(element)
+  return () => {
+    try {
+      element.remove()
+    } catch {
+      // NOTE: a re-render may unmount the element before this cleanup fires,
+      // so the remove() call can throw on a node that's already been removed.
+      // Swallow the error.
+    }
+  }
+}
+
+/** Positions a floating element relative to its button using Floating UI, then
+ *  returns a cleanup function. Designed to be called inside an `OnMount`
+ *  action: the consumer wraps the call in `Effect.sync` and stashes the
+ *  returned cleanup in the `Mount` result. When `interceptTab` is true
+ *  (default), Tab key in portal mode refocuses the button — set to false for
+ *  components like Popover where Tab should navigate naturally within the
+ *  panel. When `focusAfterPosition` is true, the element is focused after the
+ *  first position computation clears visibility — deferred via
+ *  requestAnimationFrame so the element is painted before focus fires.
+ *  `focusSelector` optionally targets a descendant (e.g. a calendar grid
+ *  inside a popover panel) instead of the panel itself. */
+export const anchorSetup =
+  (config: {
+    buttonId: string
+    anchor: AnchorConfig
+    interceptTab?: boolean
+    focusAfterPosition?: boolean
+    focusSelector?: string
+  }) =>
+  (element: Element): (() => void) => {
+    const button = document.getElementById(config.buttonId)
+
+    if (!(button instanceof HTMLElement) || !(element instanceof HTMLElement)) {
+      return Function.constVoid
+    }
+
+    const isPortal = config.anchor.portal ?? true
+    const portalCleanup = isPortal ? portalToBody(element) : undefined
+
+    const { placement, gap, offset: crossAxis, padding } = config.anchor
+    const shouldInterceptTab = config.interceptTab ?? true
+
+    let isFirstUpdate = true
+
+    const floatingCleanup = autoUpdate(button, element, () => {
+      computePosition(button, element, {
+        placement: placement ?? 'bottom-start',
+        strategy: 'absolute',
+        middleware: [
+          floatingOffset({
+            mainAxis: gap ?? 0,
+            crossAxis: crossAxis ?? 0,
+          }),
+          flip({ padding: padding ?? 0 }),
+          shift({ padding: padding ?? 0 }),
+          size({
+            padding: padding ?? 0,
+            apply({ rects, availableHeight }) {
+              element.style.setProperty(
+                '--button-width',
+                `${rects.reference.width}px`,
+              )
+              element.style.maxHeight = `${availableHeight}px`
+              element.style.overflowY = 'auto'
+              element.style.overscrollBehavior = 'none'
+            },
+          }),
+        ],
+      }).then(({ x, y }) => {
+        element.style.left = `${x}px`
+        element.style.top = `${y}px`
+
+        if (isFirstUpdate) {
+          isFirstUpdate = false
+          element.style.visibility = ''
+
+          if (config.focusAfterPosition ?? false) {
+            requestAnimationFrame(() => {
+              const target = config.focusSelector
+                ? document.querySelector(config.focusSelector)
+                : element
+              if (target instanceof HTMLElement) {
+                target.focus()
+              }
+            })
+          }
+        }
+      })
+    })
+
+    if (isPortal && shouldInterceptTab) {
+      const handleTabKey = (event: Event): void => {
+        if (event instanceof KeyboardEvent && event.key === 'Tab') {
+          button.focus()
+        }
+      }
+
+      element.addEventListener('keydown', handleTabKey)
+
+      return () => {
+        floatingCleanup()
+        element.removeEventListener('keydown', handleTabKey)
+        portalCleanup?.()
+      }
+    } else {
+      return () => {
+        floatingCleanup()
+        portalCleanup?.()
+      }
+    }
+  }

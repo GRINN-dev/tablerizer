@@ -1,0 +1,13 @@
+node_modules
+dist
+*.tsbuildinfo
+*.tgz
+.vercel
+**/.claude/*
+!/.claude/commands/
+!/.claude/settings.json
+packages/foldkit/src/devTools/overlay-styles.ts
+packages/website/src/generated/
+.playwright-mcp/
+playwright-report/
+test-results/

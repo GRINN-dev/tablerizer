@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateConstraintsSQL } from "../../lib/generators.js";
-import type { ConstraintDefinition } from "../../lib/database.js";
+import { generateConstraintsSQL } from "../../src/generators/index.js";
+import type { ConstraintDefinition } from "../../src/database.js";
 import { join } from "./fixtures.js";
 
 describe("generateConstraintsSQL", () => {

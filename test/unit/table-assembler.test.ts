@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { generateTableSQL, type TableData } from "../../lib/generators.js";
+import { generateTableSQL, type TableData } from "../../src/generators/index.js";
 
 describe("generateTableSQL", () => {
   const minimalTable: TableData = {
@@ -80,21 +80,8 @@ describe("generateTableSQL", () => {
     }
   });
 
-  it("should apply role mappings when provided", () => {
-    const withGrants: TableData = {
-      ...minimalTable,
-      rbac: {
-        table_grants: [{ grantor: "o", grantee: "visitor", privilege: "SELECT", is_grantable: false }],
-        column_grants: [],
-      },
-    };
-    const result = generateTableSQL("s", withGrants, { visitor: ":VISITOR" });
-    assert.ok(result.includes(":VISITOR"));
-    assert.ok(!result.includes("visitor"));
-  });
-
   it("should include date when includeDate is true", () => {
-    const result = generateTableSQL("s", minimalTable, undefined, true);
+    const result = generateTableSQL("s", minimalTable, true);
     assert.match(result, /-- Date: \d{4}-/);
   });
 
