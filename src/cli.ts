@@ -26,6 +26,7 @@ import { makeDbLayer } from "./database.js"
 import { exportAll, type ExportResult, type ProgressCallback } from "./tablerizer.js"
 import type { ScanError } from "./scanner.js"
 import type { WriteError } from "./writer.js"
+import { runInspectServer } from "./inspect/server.js"
 
 const TOOL_NAME = "tablerizer"
 const VERSION = "2.0.0"
@@ -57,6 +58,7 @@ USAGE:
   ${TOOL_NAME} --schemas "schema1,schema2" --out ./sql_output
   ${TOOL_NAME} --config ./config.json
   ${TOOL_NAME} (uses .tablerizerrc if present)
+  ${TOOL_NAME} inspect [--port 4280]
 
 SPELLBOOK (OPTIONS):
   --config <file>     📜 Path to configuration grimoire (JSON)
@@ -71,6 +73,10 @@ SPELLBOOK (OPTIONS):
   --silent           🤫 Silent mode - minimal output for automation
   --help, -h         ❓ Show this magical help
   --version, -v      ℹ️  Show version of the wizard
+
+COMMANDS:
+  inspect            🔍 Launch interactive schema inspector dashboard
+    --port <number>  🌐 Dashboard port (default: 4280)
 
 CONFIGURATION SCROLLS:
   Create .tablerizerrc (auto-detected) or custom JSON:
@@ -247,6 +253,28 @@ const cliProgram: Effect.Effect<void, never> = pipe(
     }
     if (args.includes("--version") || args.includes("-v")) {
       showVersion()
+      return
+    }
+
+    if (args[0] === "inspect") {
+      const inspectArgs = args.slice(1)
+      const portIdx = inspectArgs.indexOf("--port")
+      const port = portIdx !== -1 ? parseInt(inspectArgs[portIdx + 1], 10) || 4280 : 4280
+
+      const config = yield* loadConfig(inspectArgs)
+      yield* pipe(
+        runInspectServer({
+          database_url: config.database_url!,
+          schemas: config.schemas,
+          port,
+        }),
+        Effect.catchAll((e) =>
+          Effect.sync(() => {
+            displayError(`Inspect server error: ${e.message}`)
+            process.exit(1)
+          }),
+        ),
+      )
       return
     }
 

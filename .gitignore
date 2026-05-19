@@ -166,3 +166,7 @@ pgrbac-output/
 # Test databases and exports
 test_exports/
 *.sql
+
+# Dashboard
+dashboard/dist/
+dashboard/node_modules/
